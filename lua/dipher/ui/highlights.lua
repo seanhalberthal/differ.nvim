@@ -38,16 +38,18 @@ local function fg_of(groups, fallback)
     return fallback
 end
 
--- semantic status palette, resolved against the current theme. fallbacks are the
--- tokyo Night-ish hexes the user's diffview config lands on
+-- semantic status palette, resolved against the current theme. GitSigns groups
+-- come first because that's where themes (and the user's diffview config) keep the
+-- vivid git colours; `Added`/`Changed`/`Removed` are often duller or unset. order
+-- and fallbacks mirror the user's diff-highlights.lua so the panel matches diffview
 ---@return table<string, integer>
 local function palette()
     return {
-        green = fg_of({ "Added", "diffAdded", "GitSignsAdd", "String" }, 0x9ece6a),
-        yellow = fg_of({ "Changed", "diffChanged", "GitSignsChange", "WarningMsg" }, 0xe0af68),
-        blue = fg_of({ "Function", "Directory" }, 0x7aa2f7),
-        orange = fg_of({ "Number", "Constant" }, 0xff9e64),
-        red = fg_of({ "Removed", "diffRemoved", "GitSignsDelete", "ErrorMsg" }, 0xf7768e),
+        green = fg_of({ "GitSignsAdd", "Added", "diffAdded", "String" }, 0xa6e3a1),
+        yellow = fg_of({ "GitSignsChange", "Changed", "diffChanged", "WarningMsg" }, 0xf9e2af),
+        red = fg_of({ "GitSignsDelete", "Removed", "diffRemoved", "ErrorMsg" }, 0xf38ba8),
+        blue = fg_of({ "Function", "Directory" }, 0x89b4fa),
+        orange = fg_of({ "Number", "Constant" }, 0xfab387),
         grey = fg_of({ "Comment", "NonText" }, 0x6c7086),
     }
 end

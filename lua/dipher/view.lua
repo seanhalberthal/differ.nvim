@@ -76,6 +76,21 @@ local function name_buffer(bufnr, model, side)
     end
 end
 
+-- give the buffer the file's filetype so the statusline / lualine shows it, but
+-- keep native treesitter and regex syntax off: the buffer holds interleaved
+-- old+new lines that aren't valid source, and dipher paints its own syntax pass
+-- through the line map (§6.5), so a native highlighter would only mangle it
+---@param bufnr integer
+---@param path string
+local function set_filetype(bufnr, path)
+    local ft = vim.filetype.match({ filename = path }) or ""
+    if vim.bo[bufnr].filetype ~= ft then
+        vim.bo[bufnr].filetype = ft
+    end
+    pcall(vim.treesitter.stop, bufnr)
+    vim.bo[bufnr].syntax = "OFF"
+end
+
 -- the map for a side, or the unified map. consumers (]c, staging, comment
 -- anchoring) read this rather than branching on layout themselves
 ---@param side dipher.ColumnSide
@@ -103,6 +118,7 @@ function View:rerender(opts)
         local existing = self.columns[i]
         local bufnr = existing and existing.bufnr or vim.api.nvim_create_buf(false, true)
         name_buffer(bufnr, self.model, col.side)
+        set_filetype(bufnr, self.model.path)
         vim.bo[bufnr].modifiable = true
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, col.lines)
         vim.bo[bufnr].modifiable = false

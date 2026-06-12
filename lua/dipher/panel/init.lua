@@ -87,6 +87,11 @@ function Panel.new(opts)
     vim.bo[bufnr].swapfile = false
     vim.bo[bufnr].filetype = "dipherpanel"
     vim.bo[bufnr].modifiable = false
+    -- name it so the statusline shows "dipher://panel" rather than "[Scratch]"
+    -- (#bufnr fallback guards the rare case the bare name is already taken)
+    if not pcall(vim.api.nvim_buf_set_name, bufnr, "dipher://panel") then
+        pcall(vim.api.nvim_buf_set_name, bufnr, "dipher://panel#" .. bufnr)
+    end
     return setmetatable({
         bufnr = bufnr,
         sections = opts.sections,

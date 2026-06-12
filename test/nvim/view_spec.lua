@@ -300,6 +300,30 @@ describe("view re-source", function()
         assert.is_truthy(vim.api.nvim_buf_get_name(buf):find("lua/b.lua", 1, true))
         v:close()
     end)
+
+    it("sets the file's filetype (for the statusline) but keeps native syntax off", function()
+        local function named(path)
+            return diff.build({
+                path = path,
+                old_rev = "A",
+                new_rev = "B",
+                old_text = "x\n",
+                new_text = "x\ny\n",
+            })
+        end
+        local v = View.new(named("foo.lua"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local buf = v.columns[1].bufnr
+        assert.are.equal("lua", vim.bo[buf].filetype)
+        assert.are.equal("OFF", vim.bo[buf].syntax) -- dipher paints its own syntax pass
+        v:set_source(named("bar.py")) -- filetype tracks the re-sourced file
+        assert.are.equal("python", vim.bo[buf].filetype)
+        v:close()
+    end)
 end)
 
 describe("command router", function()
