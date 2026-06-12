@@ -6,6 +6,11 @@ local stacked = require("dipher.render.stacked")
 
 local FULL = math.huge
 
+-- Stacked renders a single "unified" column; unwrap it for the assertions.
+local function render(model, opts)
+    return stacked.render(model, opts).columns[1]
+end
+
 describe("render.stacked substitution", function()
     local model = {
         path = "x",
@@ -26,12 +31,12 @@ describe("render.stacked substitution", function()
     }
 
     it("interleaves old then new with full context", function()
-        local r = stacked.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ "a", "b", "c", "C", "d", "e" }, r.lines)
     end)
 
     it("classifies every rail line", function()
-        local r = stacked.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         local kinds = {}
         for i, l in ipairs(r.map.lines) do
             kinds[i] = l.kind
@@ -45,7 +50,7 @@ describe("render.stacked substitution", function()
     end)
 
     it("builds reverse indices that point old/new lnums at buffer lnums", function()
-        local r = stacked.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ [1] = 1, [2] = 2, [3] = 3, [4] = 5, [5] = 6 }, r.map.from_old)
         assert.are.same({ [1] = 1, [2] = 2, [3] = 4, [4] = 5, [5] = 6 }, r.map.from_new)
     end)
@@ -80,7 +85,7 @@ describe("render.stacked context collapsing", function()
     }
 
     it("keeps context window and collapses the middle to a meta line", function()
-        local r = stacked.render(model, { context = 1 })
+        local r = render(model, { context = 1 })
         assert.are.same({
             "1", -- leading context (lead=0 at file start, but tail=1 of hunk 1 shows line 1)
             "2", -- old
@@ -98,7 +103,7 @@ describe("render.stacked context collapsing", function()
     end)
 
     it("never emits a meta line under full context", function()
-        local r = stacked.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         for _, l in ipairs(r.map.lines) do
             assert.are_not.equal("meta", l.kind)
         end
@@ -125,7 +130,7 @@ describe("render.stacked add-only", function()
                 },
             },
         }
-        local r = stacked.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ "a", "X", "b" }, r.lines)
         assert.are.same({ "context", "new", "context" }, {
             r.map.lines[1].kind,
@@ -156,7 +161,7 @@ describe("render.stacked delete-only", function()
                 },
             },
         }
-        local r = stacked.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ "a", "b", "c" }, r.lines)
         assert.are.same({ "context", "old", "context" }, {
             r.map.lines[1].kind,
@@ -187,7 +192,7 @@ describe("render.stacked word-level spans", function()
                 },
             },
         }
-        local r = stacked.render(model, { context = FULL, deep_diff = { enabled = true } })
+        local r = render(model, { context = FULL, deep_diff = { enabled = true } })
         assert.are.same({ { col_start = 6, col_end = 9 } }, r.map.lines[1].spans)
         assert.are.same({ { col_start = 6, col_end = 9 } }, r.map.lines[2].spans)
     end)
@@ -210,7 +215,7 @@ describe("render.stacked word-level spans", function()
                 },
             },
         }
-        local r = stacked.render(model, { context = FULL, deep_diff = { enabled = false } })
+        local r = render(model, { context = FULL, deep_diff = { enabled = false } })
         assert.is_nil(r.map.lines[1].spans)
         assert.is_nil(r.map.lines[2].spans)
     end)
@@ -218,7 +223,7 @@ end)
 
 describe("render.stacked identical content", function()
     it("produces no lines when there are no hunks", function()
-        local r = stacked.render({
+        local r = render({
             path = "x",
             old_rev = "A",
             new_rev = "B",

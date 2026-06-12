@@ -1,16 +1,25 @@
--- Render dispatch: the frozen signature is render(model, opts) -> { lines, map }
--- Renderers are pure functions over the hunk model; a layout toggle is a re-render
+-- Render dispatch: the frozen signature is render(model, opts) -> RenderResult.
+-- Renderers are pure functions over the hunk model; a layout toggle is a re-render.
+--
+-- A render is N index-aligned columns, each its own buffer content + LineMap:
+-- stacked is one "unified" column (old/new interleaved, dual-rail gutter), split
+-- is two columns ("old" left, "new" right) with filler keeping rows aligned. The
+-- view layer creates one buffer per column and scroll-binds when N > 1.
+
+---@alias dipher.ColumnSide "old"|"new"|"unified"
+
+---@class dipher.Column
+---@field lines string[]        -- this column's buffer content (filler rows = "")
+---@field map dipher.LineMap    -- this column's line map
+---@field side dipher.ColumnSide
 
 ---@class dipher.RenderResult
----@field lines string[]        -- derived-buffer content (stacked: single buffer)
----@field map dipher.LineMap
+---@field columns dipher.Column[] -- one per buffer; all share `rows`
+---@field rows integer            -- aligned row count
 
 ---@alias dipher.Layout "stacked"|"split"
 
--- Stacked returns a single buffer + map (dipher.RenderResult); split returns two
--- index-aligned columns + a map per side (dipher.SplitResult). The view layer
--- dispatches on layout to set up one window or a synced pair.
----@alias dipher.Renderer fun(model: dipher.DiffModel, opts: table): dipher.RenderResult|dipher.SplitResult
+---@alias dipher.Renderer fun(model: dipher.DiffModel, opts: table): dipher.RenderResult
 
 local M = {}
 

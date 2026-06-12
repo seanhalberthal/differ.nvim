@@ -14,22 +14,16 @@ local walk = require("dipher.render.walk")
 
 local M = {}
 
----@class dipher.SplitResult
----@field old_lines string[]      -- left column buffer content (filler = "")
----@field new_lines string[]      -- right column buffer content (filler = "")
----@field old_map dipher.LineMap  -- left column map (from_old populated)
----@field new_map dipher.LineMap  -- right column map (from_new populated)
-
 ---@param hidden integer
 ---@return string
 local function meta_text(hidden)
     return ("\u{22ef} %d unchanged line%s"):format(hidden, hidden == 1 and "" or "s")
 end
 
--- Render a model into two index-aligned columns plus a map per side.
+-- Render a model into two index-aligned columns ("old" left, "new" right).
 ---@param model dipher.DiffModel
 ---@param opts { context: integer, deep_diff?: table }
----@return dipher.SplitResult
+---@return dipher.RenderResult
 function M.render(model, opts)
     local old_map, new_map = LineMap.new(), LineMap.new()
     local old_lines, new_lines = {}, {}
@@ -46,8 +40,18 @@ function M.render(model, opts)
         new_map:push(rrail)
     end
 
+    local function result()
+        return {
+            columns = {
+                { lines = old_lines, map = old_map, side = "old" },
+                { lines = new_lines, map = new_map, side = "new" },
+            },
+            rows = #old_lines,
+        }
+    end
+
     if #model.hunks == 0 then
-        return { old_lines = old_lines, new_lines = new_lines, old_map = old_map, new_map = new_map }
+        return result()
     end
 
     local context = opts.context or 3
@@ -96,7 +100,7 @@ function M.render(model, opts)
         end,
     })
 
-    return { old_lines = old_lines, new_lines = new_lines, old_map = old_map, new_map = new_map }
+    return result()
 end
 
 return M

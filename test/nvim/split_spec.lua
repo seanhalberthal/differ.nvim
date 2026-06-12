@@ -14,11 +14,22 @@ local function build(old_text, new_text)
     })
 end
 
+-- Split renders two columns; expose them under old_*/new_* for the assertions.
+local function render(model, opts)
+    local r = split.render(model, opts)
+    return {
+        old_lines = r.columns[1].lines,
+        new_lines = r.columns[2].lines,
+        old_map = r.columns[1].map,
+        new_map = r.columns[2].map,
+    }
+end
+
 -- Under full context every source line is rendered; from_old/from_new must resolve
 -- to a row whose column content matches the source, and the columns stay aligned.
 local function assert_roundtrip(old_text, new_text)
     local model = build(old_text, new_text)
-    local r = split.render(model, { context = math.huge })
+    local r = render(model, { context = math.huge })
     local old_all = text_util.to_lines(old_text)
     local new_all = text_util.to_lines(new_text)
 

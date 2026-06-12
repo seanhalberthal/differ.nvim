@@ -2,6 +2,18 @@ local split = require("dipher.render.split")
 
 local FULL = math.huge
 
+-- Split renders two columns ("old" left, "new" right); expose them under the
+-- old_*/new_* names the assertions read.
+local function render(model, opts)
+    local r = split.render(model, opts)
+    return {
+        old_lines = r.columns[1].lines,
+        new_lines = r.columns[2].lines,
+        old_map = r.columns[1].map,
+        new_map = r.columns[2].map,
+    }
+end
+
 local function kinds(map)
     local out = {}
     for i, l in ipairs(map.lines) do
@@ -30,14 +42,14 @@ describe("render.split substitution", function()
     }
 
     it("lays old and new in aligned columns", function()
-        local r = split.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ "a", "b", "c", "d", "e" }, r.old_lines)
         assert.are.same({ "a", "b", "C", "d", "e" }, r.new_lines)
         assert.are.equal(#r.old_lines, #r.new_lines)
     end)
 
     it("classifies the changed row as old on the left, new on the right", function()
-        local r = split.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ "context", "context", "old", "context", "context" }, kinds(r.old_map))
         assert.are.same({ "context", "context", "new", "context", "context" }, kinds(r.new_map))
         assert.are.equal(3, r.old_map.lines[3].old)
@@ -46,7 +58,7 @@ describe("render.split substitution", function()
     end)
 
     it("builds per-side reverse indices", function()
-        local r = split.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5 }, r.old_map.from_old)
         assert.are.same({ [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5 }, r.new_map.from_new)
     end)
@@ -71,7 +83,7 @@ describe("render.split unequal hunks pad with filler", function()
                 },
             },
         }
-        local r = split.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ "a", "M", "", "b" }, r.old_lines)
         assert.are.same({ "a", "X", "Y", "b" }, r.new_lines)
         assert.are.equal(#r.old_lines, #r.new_lines)
@@ -101,7 +113,7 @@ describe("render.split unequal hunks pad with filler", function()
                 },
             },
         }
-        local r = split.render(model, { context = FULL })
+        local r = render(model, { context = FULL })
         assert.are.same({ "a", "M", "N", "b" }, r.old_lines)
         assert.are.same({ "a", "X", "", "b" }, r.new_lines)
         assert.are.equal("meta", r.new_map.lines[3].kind)
@@ -128,7 +140,7 @@ describe("render.split word-level spans", function()
                 },
             },
         }
-        local r = split.render(model, { context = FULL, deep_diff = { enabled = true } })
+        local r = render(model, { context = FULL, deep_diff = { enabled = true } })
         assert.are.same({ { col_start = 6, col_end = 9 } }, r.old_map.lines[1].spans)
         assert.are.same({ { col_start = 6, col_end = 9 } }, r.new_map.lines[1].spans)
     end)
@@ -153,7 +165,7 @@ describe("render.split context collapsing", function()
                 },
             },
         }
-        local r = split.render(model, { context = 1 })
+        local r = render(model, { context = 1 })
         assert.are.equal(#r.old_lines, #r.new_lines)
         assert.are.equal("meta", r.old_map.lines[#r.old_lines].kind)
         assert.are.equal("meta", r.new_map.lines[#r.new_lines].kind)
@@ -162,7 +174,7 @@ end)
 
 describe("render.split identical content", function()
     it("produces empty columns when there are no hunks", function()
-        local r = split.render({
+        local r = render({
             path = "x",
             old_rev = "A",
             new_rev = "B",

@@ -15,11 +15,16 @@ local function build(old_text, new_text)
     })
 end
 
+-- Stacked renders a single "unified" column; unwrap it for the assertions.
+local function render(model, opts)
+    return stacked.render(model, opts).columns[1]
+end
+
 -- Under full context every line is rendered, so from_old/from_new must point at a
 -- buffer line whose content matches the source line. This is the core map contract.
 local function assert_roundtrip(old_text, new_text)
     local model = build(old_text, new_text)
-    local r = stacked.render(model, { context = math.huge })
+    local r = render(model, { context = math.huge })
     local old_all = text_util.to_lines(old_text)
     local new_all = text_util.to_lines(new_text)
 
@@ -68,13 +73,13 @@ end)
 describe("render.stacked end-to-end content", function()
     it("renders raw code lines with no decoration", function()
         local model = build("a\nb\nc\n", "a\nB\nc\n")
-        local r = stacked.render(model, { context = math.huge })
+        local r = render(model, { context = math.huge })
         assert.are.same({ "a", "b", "B", "c" }, r.lines)
     end)
 
     it("collapses far context into a meta line", function()
         local model = build("1\n2\n3\n4\n5\n6\n7\n8\n9\n", "1\nX\n3\n4\n5\n6\n7\nY\n9\n")
-        local r = stacked.render(model, { context = 1 })
+        local r = render(model, { context = 1 })
         local metas = 0
         for _, l in ipairs(r.map.lines) do
             if l.kind == "meta" then
