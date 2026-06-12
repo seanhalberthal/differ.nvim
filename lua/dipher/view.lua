@@ -1,10 +1,12 @@
 -- View lifecycle: own one derived buffer per render column, lay them into windows
 -- (one for stacked, a scroll-bound pair for split), and hold each column's map.
--- Buffers + maps are regenerated atomically on re-render; the gutter rail and the
--- highlight layer are refreshed from the map; overlays are extmark-only.
+-- Buffers + maps are regenerated atomically on re-render; the gutter rail, the
+-- diff highlight layer, and the treesitter syntax pass (§6.5) are refreshed from
+-- the map; overlays are extmark-only.
 
 local render = require("dipher.render")
 local paint = require("dipher.ui.paint")
+local syntax = require("dipher.syntax")
 local statuscolumn = require("dipher.ui.statuscolumn")
 local nav = require("dipher.nav")
 
@@ -76,6 +78,7 @@ function View:rerender(opts)
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, col.lines)
         vim.bo[bufnr].modifiable = false
         paint.apply(bufnr, ns, col)
+        syntax.apply(bufnr, col, self.model)
         statuscolumn.set(bufnr, statuscolumn.format(col))
         self.columns[i] = {
             bufnr = bufnr,
