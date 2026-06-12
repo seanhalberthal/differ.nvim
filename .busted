@@ -1,0 +1,14 @@
+return {
+    _all = {
+        lpath = "lua/?.lua;lua/?/init.lua",
+    },
+    -- Pure Lua units (no Neovim): busted
+    unit = {
+        ROOT = { "test/unit" },
+        pattern = "_spec%.lua$",
+    },
+    default = {
+        ROOT = { "test/unit" },
+        pattern = "_spec%.lua$",
+    },
+}

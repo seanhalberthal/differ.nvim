@@ -1,0 +1,32 @@
+local pair = require("dipher.worddiff.pair")
+
+describe("worddiff.pair.similarity", function()
+    it("is 1 for identical lines", function()
+        assert.are.equal(1.0, pair.similarity("foo bar", "foo bar"))
+    end)
+
+    it("is 0 for fully disjoint lines", function()
+        assert.are.equal(0.0, pair.similarity("foo", "bar"))
+    end)
+
+    it("is between 0 and 1 for partial overlap", function()
+        local s = pair.similarity("foo bar baz", "foo bar qux")
+        assert.is_true(s > 0 and s < 1)
+    end)
+end)
+
+describe("worddiff.pair.pair", function()
+    it("pairs positionally when lines match", function()
+        local p = pair.pair({ "a", "b" }, { "a", "b" }, 0.5)
+        assert.are.equal(1, p[1].old)
+        assert.are.equal(1, p[1].new)
+        assert.are.equal(2, p[2].old)
+        assert.are.equal(2, p[2].new)
+    end)
+
+    it("leaves no-partner lines unpaired", function()
+        local p = pair.pair({ "totally different" }, { "nothing alike here" }, 0.5)
+        assert.is_nil(p[1].new)
+        assert.are.equal(0, p[1].score)
+    end)
+end)
