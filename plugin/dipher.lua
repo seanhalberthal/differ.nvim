@@ -5,7 +5,12 @@ if vim.g.loaded_dipher then
 end
 vim.g.loaded_dipher = true
 
--- TODO: subcommand router (:Dipher [rev] | pr | layout | context | cache)
-vim.api.nvim_create_user_command("Dipher", function(_)
-    vim.notify("dipher: not yet implemented", vim.log.levels.INFO)
-end, { nargs = "*", desc = "dipher diff viewer" })
+vim.api.nvim_create_user_command("Dipher", function(opts)
+    require("dipher.command").dispatch(opts.fargs)
+end, {
+    nargs = "*",
+    desc = "dipher diff viewer",
+    complete = function(arglead, cmdline)
+        return require("dipher.command").complete(arglead, cmdline)
+    end,
+})

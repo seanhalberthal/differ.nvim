@@ -148,4 +148,111 @@ describe("view layout toggle", function()
         assert.is_false(vim.api.nvim_buf_is_valid(stale))
         v:close()
     end)
+
+    it("relays windows when toggling stacked <-> split", function()
+        vim.cmd("silent! only")
+        local v = View.new(model("a\nM\nb\n", "a\nX\nb\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        assert.are.equal(1, #v.columns)
+
+        v:toggle_layout() -- -> split
+        assert.are.equal(2, #v.columns)
+        assert.are.equal("old", v.columns[1].side)
+        assert.are.equal("new", v.columns[2].side)
+        assert.is_true(vim.api.nvim_win_is_valid(v.columns[2].winid))
+        assert.is_true(vim.wo[v.columns[1].winid].scrollbind)
+
+        v:toggle_layout() -- -> stacked
+        assert.are.equal(1, #v.columns)
+        assert.are.equal("unified", v.columns[1].side)
+        assert.is_false(vim.wo[v.columns[1].winid].scrollbind)
+        v:close()
+    end)
+end)
+
+describe("view context controls", function()
+    local function meta_count(view)
+        local n = 0
+        for _, l in ipairs(view.columns[1].map.lines) do
+            if l.kind == "meta" then
+                n = n + 1
+            end
+        end
+        return n
+    end
+
+    -- two hunks with a 5-line gap between them
+    local function gap_view()
+        return View.new(model("1\n2\n3\n4\n5\n6\n7\n8\n9\n", "1\nX\n3\n4\n5\n6\n7\nY\n9\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+    end
+
+    it("collapses context, producing a meta separator", function()
+        local v = gap_view()
+        v:open()
+        assert.are.equal(0, meta_count(v)) -- whole file: nothing hidden
+        v:set_context(1)
+        assert.are.equal(1, meta_count(v)) -- the 5-line gap collapses
+        v:set_context(math.huge)
+        assert.are.equal(0, meta_count(v))
+        v:close()
+    end)
+
+    it("widens/narrows by one and no-ops at whole-file", function()
+        local v = gap_view()
+        v:open()
+        v:set_context(2)
+        v:adjust_context(-1)
+        assert.are.equal(1, v.context)
+        v:adjust_context(1)
+        assert.are.equal(2, v.context)
+        v:set_context(math.huge)
+        v:adjust_context(-1) -- can't decrement infinity
+        assert.are.equal(math.huge, v.context)
+        v:close()
+    end)
+end)
+
+describe("command router", function()
+    local command = require("dipher.command")
+
+    it("dispatches layout + context against the current view", function()
+        vim.cmd("silent! only")
+        local v = View.new(model("1\n2\n3\n4\n5\n6\n7\n8\n9\n", "1\nX\n3\n4\n5\n6\n7\nY\n9\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        vim.api.nvim_set_current_win(v.columns[1].winid)
+        assert.are.equal(v, View.current())
+
+        command.dispatch({ "layout", "split" })
+        assert.are.equal(2, #v.columns)
+
+        command.dispatch({ "context", "1" })
+        assert.are.equal(1, v.context)
+        v:close()
+    end)
+
+    it("completes subcommands and values", function()
+        local subs = command.complete("", "Dipher ")
+        table.sort(subs)
+        assert.are.same({ "context", "layout" }, subs)
+        assert.are.same(
+            { "split", "stacked" },
+            (function()
+                local v = command.complete("s", "Dipher layout s")
+                table.sort(v)
+                return v
+            end)()
+        )
+    end)
 end)
