@@ -30,12 +30,12 @@ local function assert_roundtrip(old_text, new_text)
 
     for o = 1, #old_all do
         local buf = r.map.from_old[o]
-        assert.is_not_nil(buf, "old line " .. o .. " unmapped")
+        assert(buf ~= nil, "old line " .. o .. " unmapped")
         assert.are.equal(old_all[o], r.lines[buf], "old line " .. o .. " content")
     end
     for n = 1, #new_all do
         local buf = r.map.from_new[n]
-        assert.is_not_nil(buf, "new line " .. n .. " unmapped")
+        assert(buf ~= nil, "new line " .. n .. " unmapped")
         assert.are.equal(new_all[n], r.lines[buf], "new line " .. n .. " content")
     end
 end
