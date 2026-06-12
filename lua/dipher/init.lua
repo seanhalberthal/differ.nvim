@@ -51,4 +51,19 @@ function M.diff(spec)
     return view:open()
 end
 
+-- Open a local git diff for the current file from a rev spec (§8.1). The entry
+-- point keymaps bind to this — e.g. `require("dipher").open("main...")` for the
+-- branch-total diff. A string is one rev token; pass a table for multi-arg forms.
+---@param spec string|string[]|nil
+---@return dipher.View|nil
+function M.open(spec)
+    local args = {}
+    if type(spec) == "table" then
+        args = spec
+    elseif type(spec) == "string" and spec ~= "" then
+        args = { spec }
+    end
+    return require("dipher.git").open(args)
+end
+
 return M

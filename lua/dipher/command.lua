@@ -52,18 +52,16 @@ end
 ---@type table<string, fun(arg: string|nil)>
 local SUB = { layout = M.layout, context = M.context }
 
--- Route `:Dipher <sub> <arg>` to its handler.
+-- Route `:Dipher ...`. A recognised subcommand (layout/context) takes its arg;
+-- anything else — including no args — is a local-diff rev spec (§8.1), so
+-- `:Dipher`, `:Dipher main...`, `:Dipher a..b` all open a diff of the current file.
 ---@param fargs string[]
 function M.dispatch(fargs)
-    local sub = fargs[1]
-    local handler = sub and SUB[sub]
-    if not handler then
-        return notify(
-            sub and ("unknown subcommand: " .. sub) or "not yet implemented",
-            vim.log.levels.WARN
-        )
+    local handler = fargs[1] and SUB[fargs[1]]
+    if handler then
+        return handler(fargs[2])
     end
-    handler(fargs[2])
+    require("dipher.git").open(fargs)
 end
 
 ---@type table<string, string[]>
