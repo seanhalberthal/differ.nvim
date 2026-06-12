@@ -6,6 +6,7 @@
 local LineMap = require("dipher.render.linemap")
 local text_util = require("dipher.util.text")
 local spans = require("dipher.worddiff.spans")
+local walk = require("dipher.render.walk")
 
 local M = {}
 
@@ -38,74 +39,41 @@ function M.render(model, opts)
     -- Context lines are identical on both sides, so old_all supplies their text.
     local old_all = text_util.to_lines(model.old_text)
 
-    -- Emit one context line present on both sides.
-    ---@param o integer
-    ---@param n integer
-    local function push_context(o, n)
-        lines[#lines + 1] = old_all[o]
-        map:push({ kind = "context", old = o, new = n })
-    end
-
-    -- Emit an unchanged region [old_from, new_from) of length L, collapsing its
-    -- middle to a separator when it exceeds the surrounding context windows.
-    -- lead/tail are the context lines to keep at each end (0 at a file boundary).
-    ---@param old_from integer
-    ---@param new_from integer
-    ---@param len integer
-    ---@param has_prev boolean
-    ---@param has_next boolean
-    local function emit_gap(old_from, new_from, len, has_prev, has_next)
-        if len <= 0 then
-            return
-        end
-        local lead = math.min(has_prev and context or 0, len)
-        local tail = math.min(has_next and context or 0, len)
-        if lead + tail >= len then
-            for k = 0, len - 1 do
-                push_context(old_from + k, new_from + k)
+    walk.walk(model, context, #old_all, {
+        context = function(o, n)
+            lines[#lines + 1] = old_all[o]
+            map:push({ kind = "context", old = o, new = n })
+        end,
+        meta = function(hidden)
+            lines[#lines + 1] = meta_text(hidden)
+            map:push({ kind = "meta" })
+        end,
+        -- A hunk shows its old (deleted) lines as a block, then its new (added) lines.
+        hunk = function(h, hi)
+            local old_spans, new_spans = {}, {}
+            if deep_on then
+                old_spans, new_spans = spans.for_hunk(h, threshold, mode)
             end
-            return
-        end
-        for k = 0, lead - 1 do
-            push_context(old_from + k, new_from + k)
-        end
-        lines[#lines + 1] = meta_text(len - lead - tail)
-        map:push({ kind = "meta" })
-        for k = len - tail, len - 1 do
-            push_context(old_from + k, new_from + k)
-        end
-    end
-
-    -- Emit a hunk: old (deleted) lines as a block, then new (added) lines.
-    ---@param h dipher.Hunk
-    ---@param hi integer
-    local function emit_hunk(h, hi)
-        local old_spans, new_spans = {}, {}
-        if deep_on then
-            old_spans, new_spans = spans.for_hunk(h, threshold, mode)
-        end
-        for k = 1, h.old_count do
-            lines[#lines + 1] = h.old_lines[k]
-            map:push({ kind = "old", old = h.old_start + k - 1, hunk = hi, spans = old_spans[k] })
-        end
-        for k = 1, h.new_count do
-            lines[#lines + 1] = h.new_lines[k]
-            map:push({ kind = "new", new = h.new_start + k - 1, hunk = hi, spans = new_spans[k] })
-        end
-    end
-
-    local cursor_old, cursor_new = 1, 1
-    for hi, h in ipairs(model.hunks) do
-        -- vim.text.diff reports pure insertions as old_count==0 with old_start at
-        -- the preceding old line (deletions mirror it on the new side), so derive
-        -- the last unchanged line before the hunk from the count, not the start.
-        local gap_old_end = h.old_count > 0 and (h.old_start - 1) or h.old_start
-        emit_gap(cursor_old, cursor_new, gap_old_end - cursor_old + 1, hi > 1, true)
-        emit_hunk(h, hi)
-        cursor_old = h.old_count > 0 and (h.old_start + h.old_count) or (h.old_start + 1)
-        cursor_new = h.new_count > 0 and (h.new_start + h.new_count) or (h.new_start + 1)
-    end
-    emit_gap(cursor_old, cursor_new, #old_all - cursor_old + 1, true, false)
+            for k = 1, h.old_count do
+                lines[#lines + 1] = h.old_lines[k]
+                map:push({
+                    kind = "old",
+                    old = h.old_start + k - 1,
+                    hunk = hi,
+                    spans = old_spans[k],
+                })
+            end
+            for k = 1, h.new_count do
+                lines[#lines + 1] = h.new_lines[k]
+                map:push({
+                    kind = "new",
+                    new = h.new_start + k - 1,
+                    hunk = hi,
+                    spans = new_spans[k],
+                })
+            end
+        end,
+    })
 
     return { lines = lines, map = map }
 end

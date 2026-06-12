@@ -2,12 +2,15 @@
 -- Renderers are pure functions over the hunk model; a layout toggle is a re-render
 
 ---@class dipher.RenderResult
----@field lines string[]        -- derived-buffer content
+---@field lines string[]        -- derived-buffer content (stacked: single buffer)
 ---@field map dipher.LineMap
 
 ---@alias dipher.Layout "stacked"|"split"
 
----@alias dipher.Renderer fun(model: dipher.DiffModel, opts: table): dipher.RenderResult
+-- Stacked returns a single buffer + map (dipher.RenderResult); split returns two
+-- index-aligned columns + a map per side (dipher.SplitResult). The view layer
+-- dispatches on layout to set up one window or a synced pair.
+---@alias dipher.Renderer fun(model: dipher.DiffModel, opts: table): dipher.RenderResult|dipher.SplitResult
 
 local M = {}
 
