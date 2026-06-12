@@ -6,6 +6,7 @@
 local render = require("dipher.render")
 local paint = require("dipher.ui.paint")
 local statuscolumn = require("dipher.ui.statuscolumn")
+local nav = require("dipher.nav")
 
 local ns = vim.api.nvim_create_namespace("dipher")
 local STATUSCOLUMN_EXPR = '%!v:lua.require("dipher.ui.statuscolumn").render()'
@@ -24,19 +25,6 @@ local STATUSCOLUMN_EXPR = '%!v:lua.require("dipher.ui.statuscolumn").render()'
 ---@field deep_diff table
 local View = {}
 View.__index = View
-
--- Per-window appearance: our own dual-rail gutter replaces the native gutter.
----@param winid integer
----@param bufnr integer
-local function setup_window(winid, bufnr)
-    vim.api.nvim_win_set_buf(winid, bufnr)
-    vim.wo[winid].number = false
-    vim.wo[winid].relativenumber = false
-    vim.wo[winid].signcolumn = "no"
-    vim.wo[winid].foldcolumn = "0"
-    vim.wo[winid].wrap = false
-    vim.wo[winid].statuscolumn = STATUSCOLUMN_EXPR
-end
 
 -- Build a view for a model. Buffers and data are created here; windows are not
 -- touched until :open(), so a View can be constructed headlessly for tests.
@@ -100,6 +88,53 @@ function View:rerender(opts)
     end
 end
 
+-- Per-window appearance + buffer-local motions. Our own dual-rail gutter replaces
+-- the native gutter; ]c / [c jump between hunks via the active column's map.
+---@param winid integer
+---@param bufnr integer
+function View:_setup_window(winid, bufnr)
+    vim.api.nvim_win_set_buf(winid, bufnr)
+    vim.wo[winid].number = false
+    vim.wo[winid].relativenumber = false
+    vim.wo[winid].signcolumn = "no"
+    vim.wo[winid].foldcolumn = "0"
+    vim.wo[winid].wrap = false
+    vim.wo[winid].scrollbind = false -- cleared default; split re-enables it in :open
+    vim.wo[winid].statuscolumn = STATUSCOLUMN_EXPR
+    vim.keymap.set("n", "]c", function()
+        self:goto_hunk("next")
+    end, { buffer = bufnr, desc = "dipher: next hunk" })
+    vim.keymap.set("n", "[c", function()
+        self:goto_hunk("prev")
+    end, { buffer = bufnr, desc = "dipher: previous hunk" })
+end
+
+-- Move the cursor to the next/prev hunk in the focused column. No-op (silent) at
+-- the first/last hunk, matching Vim diff-mode motions.
+---@param direction "next"|"prev"
+function View:goto_hunk(direction)
+    local win = vim.api.nvim_get_current_win()
+    local col = self.columns[1]
+    for _, c in ipairs(self.columns) do
+        if c.winid == win then
+            col = c
+            break
+        end
+    end
+    local lnum = vim.api.nvim_win_get_cursor(col.winid or win)[1]
+    -- Explicit branch, not `a and next() or prev()`: next_hunk returns nil at the
+    -- last hunk, which the and/or idiom would wrongly fall through to prev_hunk.
+    local target
+    if direction == "next" then
+        target = nav.next_hunk(col.map, lnum)
+    else
+        target = nav.prev_hunk(col.map, lnum)
+    end
+    if target then
+        vim.api.nvim_win_set_cursor(col.winid or win, { target, 0 })
+    end
+end
+
 -- Lay the columns into windows from the current window outward. Stacked takes the
 -- current window; split makes it the left (old) column and vsplits a scroll-bound
 -- right (new) column.
@@ -107,13 +142,13 @@ end
 function View:open()
     local base = vim.api.nvim_get_current_win()
     self.columns[1].winid = base
-    setup_window(base, self.columns[1].bufnr)
+    self:_setup_window(base, self.columns[1].bufnr)
 
     if #self.columns > 1 then
         vim.cmd("rightbelow vsplit")
         local right = vim.api.nvim_get_current_win()
         self.columns[2].winid = right
-        setup_window(right, self.columns[2].bufnr)
+        self:_setup_window(right, self.columns[2].bufnr)
         for _, col in ipairs(self.columns) do
             vim.wo[col.winid].scrollbind = true
         end

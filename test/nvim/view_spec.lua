@@ -94,6 +94,46 @@ describe("view split", function()
     end)
 end)
 
+describe("view hunk navigation", function()
+    -- two changes far apart so there are two distinct hunks to jump between
+    local function two_hunk_view()
+        return View.new(model("1\n2\n3\n4\n5\n6\n7\n8\n9\n", "1\nX\n3\n4\n5\n6\n7\nY\n9\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+    end
+
+    it("moves the cursor between hunks via goto_hunk", function()
+        local v = two_hunk_view()
+        v:open()
+        local win = v.columns[1].winid
+        vim.api.nvim_win_set_cursor(win, { 1, 0 })
+        v:goto_hunk("next")
+        assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1]) -- first hunk
+        v:goto_hunk("next")
+        assert.are.equal(9, vim.api.nvim_win_get_cursor(win)[1]) -- second hunk
+        v:goto_hunk("next")
+        assert.are.equal(9, vim.api.nvim_win_get_cursor(win)[1]) -- no wrap, stays put
+        v:goto_hunk("prev")
+        assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
+        v:close()
+    end)
+
+    it("binds ]c and [c as buffer-local motions", function()
+        local v = two_hunk_view()
+        v:open()
+        local buf = v.columns[1].bufnr
+        local lhs = {}
+        for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+            lhs[m.lhs] = true
+        end
+        assert.is_true(lhs["]c"])
+        assert.is_true(lhs["[c"])
+        v:close()
+    end)
+end)
+
 describe("view layout toggle", function()
     it("drops the surplus column when going split -> stacked", function()
         local v = View.new(model("a\nM\nb\n", "a\nX\nb\n"), {
