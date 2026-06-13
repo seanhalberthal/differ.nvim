@@ -320,16 +320,20 @@ function Panel:goto_file(direction, keep_focus)
     end
 end
 
--- f / b: scroll the panel a quarter page, matching the diff view's motion so it
--- works in either window. named `scroll` (not `quarter_scroll`) to avoid shadowing
--- the boolean `self.quarter_scroll` field, which would break the method lookup
+-- f / b: scroll the *diff view* a quarter page (the origin window, where the file
+-- renders), not the panel list, mirroring diffview's file-panel scroll. named
+-- `scroll` (not `quarter_scroll`) to avoid shadowing the boolean field, which would
+-- break the method lookup
 ---@param direction "down"|"up"
 function Panel:scroll(direction)
-    if not self:is_open() then
+    local win = self.origin_win
+    if not (win and vim.api.nvim_win_is_valid(win)) then
         return
     end
-    local n = math.max(1, math.floor(vim.api.nvim_win_get_height(self.winid) / 4))
-    vim.api.nvim_feedkeys(n .. (direction == "down" and CTRL_D or CTRL_U), "nx", false)
+    local n = math.max(1, math.floor(vim.api.nvim_win_get_height(win) / 4))
+    vim.api.nvim_win_call(win, function()
+        vim.cmd("normal! " .. n .. (direction == "down" and CTRL_D or CTRL_U))
+    end)
 end
 
 -- g?: a floating keymap cheatsheet, dismissed with <Esc> / g?
@@ -339,7 +343,7 @@ function Panel:show_help()
         "",
         " <CR> / o   open file / toggle fold",
         " ]f / [f    next / previous file",
-        " za         toggle fold",
+        " f / b      scroll diff down / up",
         " g?         this help",
     }
     local width = 0

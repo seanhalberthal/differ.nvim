@@ -1,4 +1,5 @@
 -- canonical hunk model built from vim.diff(); buffers are projections of this
+--
 
 ---@class dipher.Hunk
 ---@field old_start integer
