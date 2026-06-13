@@ -51,4 +51,30 @@ function M.prev_hunk(map, lnum)
     return best
 end
 
+-- the real-file (new-side) line for jump-to-file (§6.2): the cursor line's own
+-- `new` if it has one, else the nearest following line's `new` (a deleted/meta
+-- line maps forward to the next live new line), else the nearest preceding new
+-- (cursor sitting past the last new line). nil when the map has no new side at
+-- all, e.g. a pure deletion
+---@param map dipher.LineMap
+---@param lnum integer
+---@return integer|nil
+function M.file_line(map, lnum)
+    local line = map.lines[lnum]
+    if line and line.new then
+        return line.new
+    end
+    for i = lnum + 1, #map.lines do
+        if map.lines[i].new then
+            return map.lines[i].new
+        end
+    end
+    for i = lnum - 1, 1, -1 do
+        if map.lines[i].new then
+            return map.lines[i].new
+        end
+    end
+    return nil
+end
+
 return M

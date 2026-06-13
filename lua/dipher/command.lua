@@ -61,8 +61,19 @@ function M.close()
     require("dipher.git").close()
 end
 
+-- :Dipher gofile: jump from the diff to the real file at the cursor's mapped line
+function M.gofile()
+    require("dipher").jump_to_file()
+end
+
 ---@type table<string, fun(arg: string|nil)>
-local SUB = { layout = M.layout, context = M.context, panel = M.panel, close = M.close }
+local SUB = {
+    layout = M.layout,
+    context = M.context,
+    panel = M.panel,
+    close = M.close,
+    gofile = M.gofile,
+}
 
 -- route `:Dipher ...`. a recognised subcommand (layout/context/panel) takes its
 -- arg; anything else, including no args, is a local-diff rev spec (§8.1), so

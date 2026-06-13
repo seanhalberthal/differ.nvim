@@ -355,6 +355,56 @@ describe("view re-source", function()
     end)
 end)
 
+describe("view jump-to-file", function()
+    local function write(dir, name, text)
+        vim.fn.mkdir(dir, "p")
+        local fd = assert(io.open(dir .. "/" .. name, "w"))
+        fd:write(text)
+        fd:close()
+    end
+
+    it("opens the real file at the mapped line and tears the view down", function()
+        vim.cmd("silent! only")
+        local dir = vim.fn.tempname()
+        write(dir, "f.txt", "a\nB\nc\n")
+        local m = diff.build({
+            path = "f.txt",
+            old_rev = "HEAD",
+            new_rev = "WORKTREE",
+            old_text = "a\nb\nc\n",
+            new_text = "a\nB\nc\n",
+            root = dir,
+        })
+        local v =
+            View.new(m, { layout = "stacked", context = math.huge, deep_diff = { enabled = true } })
+        v:open()
+        local buf, win = v.columns[1].bufnr, v.columns[1].winid
+        -- cursor on the added "B" (buffer line 3 -> new-side line 2)
+        vim.api.nvim_win_set_cursor(win, { 3, 0 })
+        v:jump_to_file()
+
+        local cur = vim.api.nvim_get_current_buf()
+        assert.are.equal("f.txt", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(cur), ":t"))
+        assert.are.equal("", vim.bo[cur].buftype) -- a real file, not the synthetic buffer
+        assert.are.same({ "a", "B", "c" }, vim.api.nvim_buf_get_lines(cur, 0, -1, false))
+        assert.are.equal(2, vim.api.nvim_win_get_cursor(0)[1])
+        assert.is_false(vim.api.nvim_buf_is_valid(buf)) -- the diff buffer is gone
+    end)
+
+    it("notifies and stays put for a source with no root", function()
+        local v = View.new(model("a\nb\n", "a\nB\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local buf = v.columns[1].bufnr
+        v:jump_to_file()
+        assert.is_true(vim.api.nvim_buf_is_valid(buf)) -- still open: no file-backed source
+        v:close()
+    end)
+end)
+
 describe("command router", function()
     local command = require("dipher.command")
 
@@ -380,7 +430,7 @@ describe("command router", function()
     it("completes subcommands and values", function()
         local subs = command.complete("", "Dipher ")
         table.sort(subs)
-        assert.are.same({ "close", "context", "layout", "panel" }, subs)
+        assert.are.same({ "close", "context", "gofile", "layout", "panel" }, subs)
         assert.are.same(
             { "split", "stacked" },
             (function()

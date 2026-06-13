@@ -68,6 +68,48 @@ describe("nav.prev_hunk", function()
     end)
 end)
 
+describe("nav.file_line", function()
+    -- the same two-hunk full-context buffer: buf 2 = removed "2" (no new), buf 3 =
+    -- added "X" (new=2), trailing buf 11 = context "9" (new=9)
+    local map = two_hunk_map()
+
+    it("returns the cursor line's own new when it has one", function()
+        assert.are.equal(1, nav.file_line(map, 1)) -- context line, new=1
+        assert.are.equal(2, nav.file_line(map, 3)) -- the added "X", new=2
+    end)
+
+    it("maps a deleted (old-only) line forward to the next new line", function()
+        -- buffer line 2 is the removed "2" (no new); the next new is the added "X"
+        assert.are.equal(2, nav.file_line(map, 2))
+    end)
+
+    it("falls back to the nearest preceding new past the last new line", function()
+        local last = #map.lines
+        assert.are.equal(9, nav.file_line(map, last)) -- trailing context, new=9
+    end)
+
+    it("returns nil when the map has no new side at all", function()
+        local del = stacked.render({
+            path = "x",
+            old_rev = "A",
+            new_rev = "B",
+            old_text = "a\nb\n",
+            new_text = "",
+            hunks = {
+                {
+                    old_start = 1,
+                    old_count = 2,
+                    new_start = 0,
+                    new_count = 0,
+                    old_lines = { "a", "b" },
+                    new_lines = {},
+                },
+            },
+        }, { context = math.huge }).columns[1].map
+        assert.is_nil(nav.file_line(del, 1))
+    end)
+end)
+
 describe("nav with no hunks", function()
     it("returns nil both directions", function()
         local map = stacked.render({

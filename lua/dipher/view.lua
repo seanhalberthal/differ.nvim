@@ -308,18 +308,25 @@ function View:quarter_scroll(direction)
     vim.api.nvim_feedkeys(n .. (direction == "down" and CTRL_D or CTRL_U), "nx", false)
 end
 
+-- the column whose window is currently focused, defaulting to the first. split
+-- can focus either pane, so motions/jumps read this rather than assuming column 1
+---@return dipher.ViewColumn
+function View:_focused_column()
+    local win = vim.api.nvim_get_current_win()
+    for _, c in ipairs(self.columns) do
+        if c.winid == win then
+            return c
+        end
+    end
+    return self.columns[1]
+end
+
 -- move the cursor to the next/prev hunk in the focused column. no-op (silent) at
 -- the first/last hunk, matching vim diff-mode motions
 ---@param direction "next"|"prev"
 function View:goto_hunk(direction)
-    local win = vim.api.nvim_get_current_win()
-    local col = self.columns[1]
-    for _, c in ipairs(self.columns) do
-        if c.winid == win then
-            col = c
-            break
-        end
-    end
+    local col = self:_focused_column()
+    local win = col.winid or vim.api.nvim_get_current_win()
     local lnum = vim.api.nvim_win_get_cursor(col.winid or win)[1]
     -- explicit branch, not `a and next() or prev()`: next_hunk returns nil at the
     -- last hunk, which the and/or idiom would wrongly fall through to prev_hunk
@@ -332,6 +339,47 @@ function View:goto_hunk(direction)
     if target then
         vim.api.nvim_win_set_cursor(col.winid or win, { target, 0 })
     end
+end
+
+-- jump-to-file (§8.1, the `de` verb): leave the diff and open the real file on
+-- disk at the line under the cursor, mapped to its new-side line (§6.2). the
+-- focused diff window is reused for the file and survives; the rest of the
+-- session (panel, other columns, synthetic buffers) is torn down around it
+function View:jump_to_file()
+    local root = self.model.root
+    if not root then
+        vim.notify("dipher: jump-to-file needs a file-backed source", vim.log.levels.WARN)
+        return
+    end
+    local abs = root .. "/" .. self.model.path
+    if vim.fn.filereadable(abs) == 0 then
+        -- e.g. a pure deletion: the new side has no file on disk to open
+        vim.notify(("dipher: %s is not on disk"):format(self.model.path), vim.log.levels.WARN)
+        return
+    end
+
+    local col = self:_focused_column()
+    local win = (col.winid and vim.api.nvim_win_is_valid(col.winid)) and col.winid
+        or vim.api.nvim_get_current_win()
+    local target = nav.file_line(col.map, vim.api.nvim_win_get_cursor(win)[1])
+
+    -- load the real file into the focused window, which survives the teardown
+    vim.api.nvim_set_current_win(win)
+    vim.cmd.edit(vim.fn.fnameescape(abs))
+    if target then
+        pcall(vim.api.nvim_win_set_cursor, win, { target, 0 })
+        vim.cmd("normal! zz")
+    end
+
+    -- end the session. the panel drives this view, so drop its on_close (which
+    -- would re-close `win`) before tearing it down, then discard our own buffers
+    -- and windows while sparing the one now holding the real file
+    local panel = require("dipher.panel").current()
+    if panel then
+        panel.on_close = nil
+        panel:close()
+    end
+    self:close(win)
 end
 
 -- lay the columns into windows. the first column anchors on its existing window
@@ -372,15 +420,18 @@ function View:open()
     return self
 end
 
--- tear down a single column's window (if any) and buffer
+-- tear down a single column's window (if any) and buffer. `keep_win` spares that
+-- window from closing (jump-to-file repurposes it for the real file), still
+-- dropping the now-hidden synthetic buffer
 ---@param col dipher.ViewColumn|nil
-function View:_discard(col)
+---@param keep_win integer|nil
+function View:_discard(col, keep_win)
     if not col then
         return
     end
     by_buf[col.bufnr] = nil
     statuscolumn.clear(col.bufnr)
-    if col.winid and vim.api.nvim_win_is_valid(col.winid) then
+    if col.winid and col.winid ~= keep_win and vim.api.nvim_win_is_valid(col.winid) then
         pcall(vim.api.nvim_win_close, col.winid, true)
     end
     if vim.api.nvim_buf_is_valid(col.bufnr) then
@@ -388,10 +439,12 @@ function View:_discard(col)
     end
 end
 
--- close all windows and delete all buffers owned by the view
-function View:close()
+-- close all windows and delete all buffers owned by the view. `keep_win` leaves
+-- one window open (jump-to-file, which has already loaded the real file into it)
+---@param keep_win integer|nil
+function View:close(keep_win)
     for _, col in ipairs(self.columns) do
-        self:_discard(col)
+        self:_discard(col, keep_win)
     end
     self.columns = {}
 end

@@ -137,6 +137,7 @@ function M.model(source, root, file, head)
         old_text = M.read(source.old, root, old_path) or "",
         new_text = M.read(source.new, root, file.path) or "",
         head = head,
+        root = root,
     })
 end
 

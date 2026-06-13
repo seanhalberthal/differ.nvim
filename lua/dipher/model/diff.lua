@@ -17,6 +17,7 @@
 ---@field old_text string
 ---@field new_text string
 ---@field head string|nil  -- git branch, for the synthetic buffer's statusline (set by the frontend)
+---@field root string|nil  -- repo root (absolute), so jump-to-file can resolve the real file (set by the frontend)
 
 local text_util = require("dipher.util.text")
 local to_lines = text_util.to_lines
@@ -37,8 +38,17 @@ local function slice(lines, start, count)
     return out
 end
 
+---@class dipher.model.BuildOpts
+---@field path string
+---@field old_rev string
+---@field new_rev string
+---@field old_text string
+---@field new_text string
+---@field head? string  -- git branch, for the buffer statusline
+---@field root? string  -- repo root (absolute), for jump-to-file
+
 -- build a DiffModel from old/new file contents
----@param opts { path: string, old_rev: string, new_rev: string, old_text: string, new_text: string, head?: string }
+---@param opts dipher.model.BuildOpts
 ---@return dipher.DiffModel
 function M.build(opts)
     local old_lines = to_lines(opts.old_text)
@@ -72,6 +82,7 @@ function M.build(opts)
         old_text = opts.old_text,
         new_text = opts.new_text,
         head = opts.head,
+        root = opts.root,
     }
 end
 

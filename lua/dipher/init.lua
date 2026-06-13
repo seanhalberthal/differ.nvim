@@ -90,4 +90,15 @@ function M.close()
     require("dipher.git").close()
 end
 
+-- jump-to-file (§8.1, the `de` keymap): from the diff under the cursor, close the
+-- session and open the real file on disk at the mapped line. a no-op with a notice
+-- when the cursor isn't in a dipher diff
+function M.jump_to_file()
+    local view = require("dipher.view").current()
+    if not view then
+        return vim.notify("dipher: no diff view here", vim.log.levels.WARN)
+    end
+    view:jump_to_file()
+end
+
 return M
