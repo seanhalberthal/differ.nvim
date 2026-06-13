@@ -409,12 +409,6 @@ function Panel:_setup_window()
     map("[f", function()
         self:goto_file("prev")
     end, "previous file")
-    map("za", function()
-        local m = self.meta[vim.api.nvim_win_get_cursor(self.winid)[1]]
-        if m and m.kind == "dir" then
-            self:toggle_fold(m.path)
-        end
-    end, "toggle fold")
     map("g?", function()
         self:show_help()
     end, "help")
