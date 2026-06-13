@@ -24,8 +24,10 @@ local LINKS = {
     dipherPanelHelp = { link = "Comment" },
     dipherPanelDir = { link = "Directory" },
     -- history panel commit rows (§8.4): the author column (sha reuses dipherPanelDir,
-    -- the date reuses dipherPanelHelp, the counts reuse the panel count groups)
+    -- the date reuses dipherPanelHelp, the counts reuse the panel count groups) and
+    -- the ref-decoration tag in branch-range mode
     dipherHistoryAuthor = { link = "Identifier" },
+    dipherHistoryRef = { link = "Special" },
 }
 
 -- the first defined fg among `groups`, else `fallback` (a 0xRRGGBB int). lets the

@@ -96,6 +96,15 @@ function M.file_history(opts)
     return require("dipher.git").history(opts or {})
 end
 
+-- open branch-range history (§8.4, the `dp` keymap): a commit-list panel over a
+-- rev-range (`opts.range`, e.g. "origin/HEAD...HEAD"); commits expand to their files
+-- and selecting/stepping a file drives the diff view
+---@param opts table|nil
+---@return dipher.History|nil
+function M.range_history(opts)
+    return require("dipher.git").range_history(opts or {})
+end
+
 -- close the local session, the file panel and the diff view it drives (the `dc`
 -- keymap binds to this). mirrors `:DiffviewClose`
 function M.close()

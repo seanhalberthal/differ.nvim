@@ -17,6 +17,10 @@ local HEAD = { kind = "rev", rev = "HEAD", label = "HEAD" }
 local INDEX = { kind = "index", label = "INDEX" }
 local WORKTREE = { kind = "worktree", label = "WORKTREE" }
 
+-- git's canonical empty-tree object: the "old" side for a root commit (no parent),
+-- so its files list and read as pure adds (§8.4 history)
+local EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 ---@param msg string
 ---@param level integer|nil
 local function notify(msg, level)
@@ -114,6 +118,47 @@ end
 ---@return dipher.git.Commit[]
 function M.log_commits(root, opts)
     return log.parse_log(git(log.log_args(opts), root) or "")
+end
+
+-- the "old" side for a commit's own diff: its first parent, or the empty tree when
+-- it's a root commit (so the commit lists/reads as pure adds). §8.4 history
+---@param root string
+---@param sha string
+---@return dipher.git.Ref
+local function parent_or_empty(root, sha)
+    local has_parent = git({ "rev-parse", "--verify", "--quiet", sha .. "^" }, root)
+    if has_parent then
+        return { kind = "rev", rev = sha .. "^", label = sha:sub(1, 7) .. "^" }
+    end
+    return { kind = "rev", rev = EMPTY_TREE, label = "(root)" }
+end
+
+-- the commits in a rev-range, newest first, for branch-range history (§8.4, dp).
+-- `--no-merges` drops merge commits; a symmetric `a...b` range adds `--right-only`
+-- to keep only the right side (the branch's own commits), mirroring the dp flow
+---@param root string
+---@param range string
+---@return dipher.git.Commit[]
+function M.range_commits(root, range)
+    local extra = vim.split(range, "%s+", { trimempty = true })
+    extra[#extra + 1] = "--no-merges"
+    if range:find("...", 1, true) then
+        extra[#extra + 1] = "--right-only"
+    end
+    return M.log_commits(root, { extra = extra })
+end
+
+-- the files one commit changed, as panel FileEntry[] with +N -M counts (§8.4 range
+-- history): the commit diffed against its parent (or the empty tree for a root commit)
+---@param root string
+---@param sha string
+---@return dipher.FileEntry[]
+function M.commit_files(root, sha)
+    local source = {
+        old = parent_or_empty(root, sha),
+        new = { kind = "rev", rev = sha, label = sha:sub(1, 7) },
+    }
+    return M.file_entries(source, root)
 end
 
 -- resolve a source's refs to concrete revs (merge_base -> rev). returns nil if a
@@ -570,6 +615,68 @@ function M.history(opts)
         position = opts.position,
         on_select = function(commit)
             local model = model_for(commit)
+            if view and view:is_open() then
+                view:set_source(model)
+            else
+                view = require("dipher").diff_model(model)
+            end
+        end,
+        on_close = function()
+            if view and view:is_open() then
+                view:close()
+            end
+        end,
+    }):open()
+end
+
+-- :Dipher log <range> / the `dp` verb: branch-range history (§8.4). lists the
+-- range's commits in the history panel; a commit expands to its files (lazy), and
+-- selecting/stepping a file re-sources the one driven View to that file at the
+-- commit vs its parent. one expandable panel, read-only (no staging)
+---@class dipher.git.RangeHistoryOpts
+---@field range? string
+---@field position? string
+---@return dipher.History|nil
+function M.range_history(opts)
+    local History = require("dipher.history")
+    local open = History.current()
+    if open and open:is_open() then
+        open:close()
+        return nil
+    end
+
+    local range = opts.range
+    if not range or range == "" then
+        return notify("range history needs a rev-range (e.g. main...HEAD)", vim.log.levels.WARN)
+    end
+    local root = repo_root()
+    if not root then
+        return notify("not inside a git repository", vim.log.levels.WARN)
+    end
+    local commits = M.range_commits(root, range)
+    if #commits == 0 then
+        return notify("no commits in " .. range)
+    end
+    local branch = head_branch(root)
+
+    local view ---@type dipher.View|nil -- the single diff view the panel drives
+    local cfg = require("dipher").get_config()
+    return History.new({
+        commits = commits,
+        mode = "range",
+        path = range, -- the header shows the range in place of a file path
+        quarter_scroll = cfg.keymaps.quarter_scroll,
+        relative_dates = cfg.relative_dates,
+        position = opts.position,
+        expand = function(commit)
+            return M.commit_files(root, commit.sha)
+        end,
+        on_file = function(commit, entry)
+            local source = {
+                old = parent_or_empty(root, commit.sha),
+                new = { kind = "rev", rev = commit.sha, label = commit.short },
+            }
+            local model = M.model(source, root, entry, branch)
             if view and view:is_open() then
                 view:set_source(model)
             else

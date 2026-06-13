@@ -9,15 +9,16 @@ local M = {}
 ---@field short string     -- abbreviated hash
 ---@field author string    -- author name (%an)
 ---@field epoch integer    -- author date as a unix timestamp (%at), formatted by util/date
+---@field refs string      -- ref decorations (%D), e.g. "HEAD -> main, tag: v1"; "" when none
 ---@field subject string
 ---@field additions integer -- lines added by this commit, for the listed path(s)
 ---@field deletions integer -- lines removed by this commit, for the listed path(s)
 
 -- fields are joined by US (\31). US can't appear in any field (sha/short/author/
--- epoch are constrained, the subject is a single line), so a line carrying US is a
--- commit header; the `--numstat` rows that follow it never do, keeping the two
+-- epoch/refs are constrained, the subject is a single line), so a line carrying US
+-- is a commit header; the `--numstat` rows that follow it never do, keeping the two
 -- unambiguous in one pass
-local FMT = "%H%x1f%h%x1f%an%x1f%at%x1f%s"
+local FMT = "%H%x1f%h%x1f%an%x1f%at%x1f%D%x1f%s"
 
 ---@class dipher.git.LogOpts
 ---@field path? string      -- single-file history: only commits touching this path
@@ -63,7 +64,7 @@ end
 -- parse combined `git log --numstat --pretty=format:<FMT>` output into commits,
 -- newest first (git's order). a line carrying US is a commit header; a `+\t-\t path`
 -- row adds to the current commit's counts (binary `-` counts read as 0); blanks are
--- skipped. a header short of its five fields is dropped
+-- skipped. a header short of its six fields is dropped
 ---@param out string
 ---@return dipher.git.Commit[]
 function M.parse_log(out)
@@ -72,10 +73,10 @@ function M.parse_log(out)
     for _, line in ipairs(split_on(out, "\n")) do
         if line:find("\31", 1, true) then
             local f = split_on(line, "\31")
-            if #f >= 5 then
+            if #f >= 6 then
                 -- a subject could in theory carry a US; re-join the tail to be safe
-                local subject = f[5]
-                for j = 6, #f do
+                local subject = f[6]
+                for j = 7, #f do
                     subject = subject .. "\31" .. f[j]
                 end
                 cur = {
@@ -83,6 +84,7 @@ function M.parse_log(out)
                     short = f[2],
                     author = f[3],
                     epoch = tonumber(f[4]) or 0,
+                    refs = f[5],
                     subject = subject,
                     additions = 0,
                     deletions = 0,

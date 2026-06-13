@@ -61,9 +61,14 @@ function M.close()
     require("dipher.git").close()
 end
 
--- :Dipher log [path]: single-file history (§8.4); no arg uses the current file
+-- :Dipher log [arg]: file history (§8.4). no arg or an arg naming a readable file →
+-- single-file history (that file, else the current buffer); any other arg is treated
+-- as a rev-range → branch-range history
 ---@param arg string|nil
 function M.log(arg)
+    if arg and arg ~= "" and vim.fn.filereadable(vim.fn.fnamemodify(arg, ":p")) == 0 then
+        return require("dipher.git").range_history({ range = arg })
+    end
     require("dipher.git").history({ path = (arg ~= "" and arg) or nil })
 end
 

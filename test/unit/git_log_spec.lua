@@ -35,9 +35,10 @@ describe("git.log.log_args", function()
 end)
 
 describe("git.log.parse_log", function()
-    -- a commit header (the pretty-format line) followed by its --numstat rows
-    local function header(sha, short, author, epoch, subject)
-        return table.concat({ sha, short, author, epoch, subject }, US)
+    -- a commit header (the pretty-format line) followed by its --numstat rows. refs
+    -- (%D) sit between the epoch and the subject; default empty
+    local function header(sha, short, author, epoch, subject, refs)
+        return table.concat({ sha, short, author, epoch, refs or "", subject }, US)
     end
 
     it("parses one commit per header, newest first, with numstat counts", function()
@@ -56,6 +57,7 @@ describe("git.log.parse_log", function()
             short = "aaaa111",
             author = "Ada",
             epoch = 1781349032,
+            refs = "",
             subject = "add the thing",
             additions = 12,
             deletions = 8,
@@ -67,6 +69,20 @@ describe("git.log.parse_log", function()
 
     it("returns an empty list for empty output", function()
         assert.are.same({}, log.parse_log(""))
+    end)
+
+    it("parses ref decorations (%D)", function()
+        local out = table.concat({
+            header("a", "a", "Ada", "1781349032", "tip", "HEAD -> main, tag: v1"),
+            "",
+            "1\t0\ta.lua",
+            header("b", "b", "Ada", "1781318934", "older", ""),
+            "",
+            "1\t0\ta.lua",
+        }, "\n")
+        local c = log.parse_log(out)
+        assert.are.equal("HEAD -> main, tag: v1", c[1].refs)
+        assert.are.equal("", c[2].refs)
     end)
 
     it("sums numstat across multiple files in one commit", function()
