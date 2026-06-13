@@ -17,33 +17,36 @@ OK   := printf "$(GREEN)✓$(NC) %s\n"
 GO_PKG  := ./cmd/dipher-sidecar
 GO_BIN  := bin/dipher-sidecar
 
-.PHONY: help test test-unit test-nvim lint fmt fmt-check go-build go-test go-vet check clean
+.PHONY: help \
+	lua-test lua-test-unit lua-test-nvim lua-lint lua-fmt lua-fmt-check \
+	go-build go-test go-vet go-lint go-fmt go-fmt-check \
+	test lint fmt fmt-check check clean
 
 # ──────────────────────────────────────────────────────────────────────────────
 ##@ Lua
 # ──────────────────────────────────────────────────────────────────────────────
 
-test: test-unit test-nvim ## Run both unit and headless-nvim suites
+lua-test: lua-test-unit lua-test-nvim ## Run both Lua suites (unit + headless-nvim)
 
-test-unit: ## Run pure-Lua unit tests only (fast, no Neovim runtime)
+lua-test-unit: ## Run pure-Lua unit tests only (fast, no Neovim runtime)
 	@$(INFO) "Running unit tests"
 	@busted --run unit
 
-test-nvim: ## Run headless-nvim tests (needs nlua on PATH)
+lua-test-nvim: ## Run headless-nvim tests (needs nlua on PATH)
 	@$(INFO) "Running headless-nvim tests"
 	@eval $$(luarocks --lua-version=5.1 path) && busted --lua=nlua test/nvim
 
-lint: ## Luacheck + stylua --check on Lua sources
-	@$(INFO) "Linting"
+lua-lint: ## Luacheck + stylua --check on Lua sources
+	@$(INFO) "Linting Lua"
 	@luacheck lua
 	@stylua --check lua plugin test
-	@$(OK) "Lint clean"
+	@$(OK) "Lua lint clean"
 
-fmt: ## Format Lua sources with stylua
+lua-fmt: ## Format Lua sources with stylua
 	@stylua lua plugin test
-	@$(OK) "Formatted"
+	@$(OK) "Lua formatted"
 
-fmt-check: ## Verify Lua formatting without writing
+lua-fmt-check: ## Verify Lua formatting without writing
 	@stylua --check lua plugin test
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -61,11 +64,35 @@ go-test: ## Run Go tests
 go-vet: ## Run go vet over the module
 	@go vet ./...
 
+go-lint: ## Run golangci-lint over the module
+	@$(INFO) "Linting Go"
+	@golangci-lint run ./...
+	@$(OK) "Go lint clean"
+
+go-fmt: ## Format Go sources with gofmt
+	@gofmt -w cmd internal
+	@$(OK) "Go formatted"
+
+go-fmt-check: ## Verify Go formatting without writing
+	@out=$$(gofmt -l cmd internal); \
+	if [ -n "$$out" ]; then \
+		printf "$(RED)gofmt needed:$(NC)\n%s\n" "$$out"; \
+		exit 1; \
+	fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 ##@ Aggregate
 # ──────────────────────────────────────────────────────────────────────────────
 
-check: lint test go-vet go-test ## Run the full quality gate
+test: lua-test go-test ## Run every test suite (Lua + Go)
+
+lint: lua-lint go-lint ## Lint the whole codebase (Lua + Go)
+
+fmt: lua-fmt go-fmt ## Format the whole codebase (Lua + Go)
+
+fmt-check: lua-fmt-check go-fmt-check ## Verify formatting across the codebase
+
+check: lint go-vet test ## Run the full quality gate
 
 clean: ## Remove build artefacts
 	@rm -rf bin dipher-sidecar

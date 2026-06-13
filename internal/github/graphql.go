@@ -34,7 +34,7 @@ func (c *Client) graphql(ctx context.Context, query string, vars map[string]any,
 	if perr := mapHTTP(resp, nil, err); perr != nil {
 		return perr
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
 	if err != nil {

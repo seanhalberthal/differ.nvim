@@ -29,7 +29,7 @@ func (c *Client) getJSON(ctx context.Context, rawURL string, out any) error {
 	if perr := mapHTTP(resp, nil, err); perr != nil {
 		return perr
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
 	if err != nil {
@@ -68,7 +68,7 @@ func getPaged[T any](ctx context.Context, c *Client, rawURL string) ([]T, error)
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
 		next := nextLink(resp.Header.Get("Link"))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if perr := mapHTTP(resp, body, nil); perr != nil {
 			return nil, perr
