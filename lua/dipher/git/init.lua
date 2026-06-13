@@ -6,6 +6,7 @@
 
 local rev = require("dipher.git.rev")
 local patch = require("dipher.git.patch")
+local log = require("dipher.git.log")
 
 local M = {}
 
@@ -104,6 +105,15 @@ function M.changed_files(source, root)
         return {}
     end
     return rev.parse_name_status(out)
+end
+
+-- the commits behind a history request (§8.4), newest first. an empty list on git
+-- failure (e.g. the path has no history). pure arg-building/parsing live in git/log.lua
+---@param root string
+---@param opts dipher.git.LogOpts
+---@return dipher.git.Commit[]
+function M.log_commits(root, opts)
+    return log.parse_log(git(log.log_args(opts), root) or "")
 end
 
 -- resolve a source's refs to concrete revs (merge_base -> rev). returns nil if a
@@ -502,12 +512,86 @@ function M.panel(opts)
     return panel
 end
 
+-- :Dipher log [path] / the `dh` verb: single-file history (§8.4). lists the file's
+-- commits in a dedicated history panel; selecting/stepping a commit re-sources the
+-- one driven View to that commit vs its parent. read-only (no staging). `opts.path`
+-- defaults to the current buffer's file; position passes through to the panel
+---@class dipher.git.HistoryOpts
+---@field path? string
+---@field position? string
+---@return dipher.History|nil
+function M.history(opts)
+    local History = require("dipher.history")
+    local open = History.current()
+    if open and open:is_open() then
+        open:close()
+        return nil
+    end
+
+    local file = opts.path and vim.fn.fnamemodify(opts.path, ":p") or vim.api.nvim_buf_get_name(0)
+    if file == "" or vim.fn.filereadable(file) == 0 then
+        return notify("no file to show history for", vim.log.levels.WARN)
+    end
+    -- resolve symlinks so the prefix strip below lines up with git's toplevel, which
+    -- is itself realpath-resolved (e.g. macOS /var -> /private/var)
+    file = vim.fn.resolve(file)
+    local root = M.root(file)
+    if not root then
+        return notify("not inside a git repository", vim.log.levels.WARN)
+    end
+    local relpath = file:sub(#root + 2) -- strip "<root>/"; file is under root
+
+    local commits = M.log_commits(root, { path = relpath })
+    if #commits == 0 then
+        return notify("no history for " .. relpath)
+    end
+    local branch = head_branch(root)
+
+    -- a commit's diff is the patch it introduced: the file at <commit> vs its
+    -- parent. the root commit's parent (<sha>^) doesn't resolve, so M.read returns
+    -- nil -> empty old side -> a pure add, which is correct for the introducing commit
+    ---@param commit dipher.git.Commit
+    ---@return dipher.DiffModel
+    local function model_for(commit)
+        local source = {
+            old = { kind = "rev", rev = commit.short .. "^", label = commit.short .. "^" },
+            new = { kind = "rev", rev = commit.sha, label = commit.short },
+        }
+        return M.model(source, root, { path = relpath }, branch)
+    end
+
+    local view ---@type dipher.View|nil -- the single diff view the panel drives
+    return History.new({
+        commits = commits,
+        path = vim.fn.fnamemodify(file, ":~"),
+        quarter_scroll = require("dipher").get_config().keymaps.quarter_scroll,
+        position = opts.position,
+        on_select = function(commit)
+            local model = model_for(commit)
+            if view and view:is_open() then
+                view:set_source(model)
+            else
+                view = require("dipher").diff_model(model)
+            end
+        end,
+        on_close = function()
+            if view and view:is_open() then
+                view:close()
+            end
+        end,
+    }):open()
+end
+
 -- :Dipher close: tear down the whole local session: the panel (which closes the
 -- diff view it drives via on_close) or, failing that, a bare diff view
 function M.close()
     local panel = require("dipher.panel").current()
     if panel then
         return panel:close()
+    end
+    local history = require("dipher.history").current()
+    if history then
+        return history:close()
     end
     local view = require("dipher.view").current()
     if view then

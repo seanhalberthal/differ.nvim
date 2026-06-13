@@ -427,6 +427,12 @@ function View:step_file(direction)
     local panel = require("dipher.panel").current()
     if panel and panel:is_open() then
         panel:goto_file(direction, true) -- keep focus in the diff window
+        return
+    end
+    -- file history (§8.4): one file, so ]f / [f step commits instead
+    local history = require("dipher.history").current()
+    if history and history:is_open() then
+        history:step(direction, true)
     end
 end
 

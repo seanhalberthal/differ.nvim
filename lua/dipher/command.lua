@@ -61,6 +61,12 @@ function M.close()
     require("dipher.git").close()
 end
 
+-- :Dipher log [path]: single-file history (§8.4); no arg uses the current file
+---@param arg string|nil
+function M.log(arg)
+    require("dipher.git").history({ path = (arg ~= "" and arg) or nil })
+end
+
 -- :Dipher gofile: jump from the diff to the real file at the cursor's mapped line
 function M.gofile()
     require("dipher").jump_to_file()
@@ -73,6 +79,7 @@ local SUB = {
     panel = M.panel,
     close = M.close,
     gofile = M.gofile,
+    log = M.log,
 }
 
 -- route `:Dipher ...`. a recognised subcommand (layout/context/panel) takes its

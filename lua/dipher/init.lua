@@ -87,6 +87,15 @@ function M.panel(opts)
     return require("dipher.git").panel(opts or {})
 end
 
+-- open single-file history (§8.4, the `dh` keymap): a commit-list panel over the
+-- file's `git log`, driving the diff view per commit. `opts.path` defaults to the
+-- current buffer; `require("dipher").file_history()` on the file you're editing
+---@param opts table|nil
+---@return dipher.History|nil
+function M.file_history(opts)
+    return require("dipher.git").history(opts or {})
+end
+
 -- close the local session, the file panel and the diff view it drives (the `dc`
 -- keymap binds to this). mirrors `:DiffviewClose`
 function M.close()
@@ -104,7 +113,8 @@ function M.active_view()
         return view
     end
     local panel = require("dipher.panel").current()
-    local origin = panel and panel.origin_win
+    local history = require("dipher.history").current()
+    local origin = (panel and panel.origin_win) or (history and history.origin_win)
     if origin and vim.api.nvim_win_is_valid(origin) then
         return View.for_buf(vim.api.nvim_win_get_buf(origin))
     end

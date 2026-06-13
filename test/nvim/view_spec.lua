@@ -453,7 +453,7 @@ describe("command router", function()
     it("completes subcommands and values", function()
         local subs = command.complete("", "Dipher ")
         table.sort(subs)
-        assert.are.same({ "close", "context", "gofile", "layout", "panel" }, subs)
+        assert.are.same({ "close", "context", "gofile", "layout", "log", "panel" }, subs)
         assert.are.same(
             { "split", "stacked" },
             (function()
