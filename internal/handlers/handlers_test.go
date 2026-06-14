@@ -22,6 +22,7 @@ type mockAPI struct {
 	gotPath     string
 	gotReviewID string
 	gotEvent    string
+	gotComment  github.PostCommentInput
 	called      bool
 }
 
@@ -79,6 +80,13 @@ func (m *mockAPI) DiscardReview(_ context.Context, reviewID string) error {
 	m.called = true
 	m.gotReviewID = reviewID
 	return nil
+}
+
+func (m *mockAPI) PostComment(_ context.Context, _, _ string, number int, in github.PostCommentInput) (*github.PostComment, error) {
+	m.called = true
+	m.gotNumber = number
+	m.gotComment = in
+	return &github.PostComment{ID: 555, ThreadID: "PRT_1"}, nil
 }
 
 func deps(m *mockAPI) Deps {
@@ -257,5 +265,54 @@ func TestDiscardReviewRequiresReviewID(t *testing.T) {
 	wantBadRequest(t, err)
 	if m.called {
 		t.Error("GH must not be called without a review_id")
+	}
+}
+
+func TestPostCommentRoutes(t *testing.T) {
+	m := &mockAPI{}
+	res, err := deps(m).postComment(context.Background(), json.RawMessage(
+		`{"owner":"o","repo":"r","number":3,"path":"a.go","side":"RIGHT","line":8,"start_line":4,"body":"nit","review_id":"PRR_1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.gotComment.Path != "a.go" || m.gotComment.StartLine != 4 || m.gotComment.ReviewID != "PRR_1" {
+		t.Errorf("params not forwarded: %+v", m.gotComment)
+	}
+	if pc := res.(*github.PostComment); pc.ID != 555 || pc.ThreadID != "PRT_1" {
+		t.Errorf("result not forwarded: %+v", pc)
+	}
+}
+
+// a reply skips anchor validation: only body and in_reply_to are needed.
+func TestPostCommentReplyRoutes(t *testing.T) {
+	m := &mockAPI{}
+	_, err := deps(m).postComment(context.Background(), json.RawMessage(
+		`{"owner":"o","repo":"r","number":3,"in_reply_to":"PRT_5","body":"thanks"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.gotComment.InReplyTo != "PRT_5" {
+		t.Errorf("reply not forwarded: %+v", m.gotComment)
+	}
+}
+
+func TestPostCommentValidation(t *testing.T) {
+	cases := map[string]string{
+		"missing body":       `{"owner":"o","repo":"r","number":3,"path":"a.go","side":"RIGHT","line":8}`,
+		"missing path":       `{"owner":"o","repo":"r","number":3,"side":"RIGHT","line":8,"body":"x"}`,
+		"bad side":           `{"owner":"o","repo":"r","number":3,"path":"a.go","side":"MIDDLE","line":8,"body":"x"}`,
+		"non-positive line":  `{"owner":"o","repo":"r","number":3,"path":"a.go","side":"RIGHT","line":0,"body":"x"}`,
+		"range start >= end": `{"owner":"o","repo":"r","number":3,"path":"a.go","side":"RIGHT","line":4,"start_line":4,"body":"x"}`,
+		"bad start_side":     `{"owner":"o","repo":"r","number":3,"path":"a.go","side":"RIGHT","line":8,"start_line":4,"start_side":"UP","body":"x"}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := &mockAPI{}
+			_, err := deps(m).postComment(context.Background(), json.RawMessage(body))
+			wantBadRequest(t, err)
+			if m.called {
+				t.Error("GH must not be called on invalid input")
+			}
+		})
 	}
 }

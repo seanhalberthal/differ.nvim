@@ -41,3 +41,35 @@ mutation DeleteReview($reviewId: ID!) {
     pullRequestReview { id }
   }
 }`
+
+// prNodeIDQuery resolves a PR's GraphQL node id, the anchor an immediate (non-draft)
+// review thread is attached to.
+const prNodeIDQuery = `
+query PRNodeID($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) { id }
+  }
+}`
+
+// addThreadMutation opens a new review thread. exactly one of $prId / $reviewId is
+// passed: $reviewId joins a pending draft, $prId posts immediately on the PR. line/
+// side anchor the end of the range, startLine/startSide the start of a multi-line
+// range (null for single-line; cross-side ranges are valid, §7.5).
+const addThreadMutation = `
+mutation AddThread($prId: ID, $reviewId: ID, $path: String!, $body: String!, $line: Int!, $side: DiffSide!, $startLine: Int, $startSide: DiffSide) {
+  addPullRequestReviewThread(input: {pullRequestId: $prId, pullRequestReviewId: $reviewId, path: $path, body: $body, line: $line, side: $side, startLine: $startLine, startSide: $startSide}) {
+    thread {
+      id
+      comments(first: 1) { nodes { fullDatabaseId } }
+    }
+  }
+}`
+
+// addThreadReplyMutation replies into an existing thread; $reviewId joins the reply
+// to that pending draft, omitting it posts the reply immediately.
+const addThreadReplyMutation = `
+mutation AddThreadReply($threadId: ID!, $reviewId: ID, $body: String!) {
+  addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, pullRequestReviewId: $reviewId, body: $body}) {
+    comment { fullDatabaseId }
+  }
+}`

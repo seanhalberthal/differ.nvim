@@ -32,6 +32,7 @@ type API interface {
 	StartReview(ctx context.Context, owner, repo string, number int) (*github.StartReview, error)
 	SubmitReview(ctx context.Context, reviewID, event, body string) (*github.SubmitReview, error)
 	DiscardReview(ctx context.Context, reviewID string) error
+	PostComment(ctx context.Context, owner, repo string, number int, in github.PostCommentInput) (*github.PostComment, error)
 }
 
 // Deps are the handler dependencies, injected once at construction (no globals).
@@ -53,6 +54,7 @@ func NewRegistry(d Deps) Registry {
 		"start_review":       d.startReview,
 		"submit_review":      d.submitReview,
 		"discard_review":     d.discardReview,
+		"post_comment":       d.postComment,
 	}
 }
 

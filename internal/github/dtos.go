@@ -209,3 +209,37 @@ type submitReviewGQL struct {
 		} `json:"pullRequestReview"`
 	} `json:"submitPullRequestReview"`
 }
+
+// prNodeIDGQL carries a PR's node id (the anchor for an immediate review thread).
+type prNodeIDGQL struct {
+	Repository struct {
+		PullRequest struct {
+			ID string `json:"id"`
+		} `json:"pullRequest"`
+	} `json:"repository"`
+}
+
+// addThreadGQL is the addPullRequestReviewThread response: the new thread's node id
+// and its single comment's numeric id.
+type addThreadGQL struct {
+	AddPullRequestReviewThread struct {
+		Thread struct {
+			ID       string `json:"id"`
+			Comments struct {
+				Nodes []struct {
+					FullDatabaseID string `json:"fullDatabaseId"`
+				} `json:"nodes"`
+			} `json:"comments"`
+		} `json:"thread"`
+	} `json:"addPullRequestReviewThread"`
+}
+
+// addReplyGQL is the addPullRequestReviewThreadReply response: the reply comment's
+// numeric id.
+type addReplyGQL struct {
+	AddPullRequestReviewThreadReply struct {
+		Comment struct {
+			FullDatabaseID string `json:"fullDatabaseId"`
+		} `json:"comment"`
+	} `json:"addPullRequestReviewThreadReply"`
+}

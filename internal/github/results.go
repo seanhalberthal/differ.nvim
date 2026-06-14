@@ -113,6 +113,28 @@ type Check struct {
 	StartedAt  string `json:"started_at,omitempty"`
 }
 
+// PostCommentInput carries the post_comment params into the github layer. InReplyTo
+// (a thread node id) selects the reply path; otherwise a new thread is opened, as a
+// draft when ReviewID is set or immediately when it isn't. Side/StartSide are
+// LEFT/RIGHT; StartLine/StartSide anchor the start of a multi-line range.
+type PostCommentInput struct {
+	Path      string
+	Side      string
+	Line      int
+	Body      string
+	StartSide string
+	StartLine int
+	InReplyTo string
+	ReviewID  string
+}
+
+// PostComment is the post_comment result: the new comment's numeric id and the node
+// id of the thread it belongs to (the same thread on a reply).
+type PostComment struct {
+	ID       int64  `json:"id"`
+	ThreadID string `json:"thread_id"`
+}
+
 // StartReview is the start_review result: the pending review's node id (a fresh
 // one, or the viewer's existing draft when start_review is replayed).
 type StartReview struct {
