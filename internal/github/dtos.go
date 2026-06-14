@@ -243,3 +243,13 @@ type addReplyGQL struct {
 		} `json:"comment"`
 	} `json:"addPullRequestReviewThreadReply"`
 }
+
+// resolveThreadGQL is the (un)resolveReviewThread response; the mutation field is
+// aliased to result so resolve and unresolve share one shape.
+type resolveThreadGQL struct {
+	Result struct {
+		Thread struct {
+			IsResolved bool `json:"isResolved"`
+		} `json:"thread"`
+	} `json:"result"`
+}

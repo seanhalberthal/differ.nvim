@@ -23,6 +23,8 @@ type mockAPI struct {
 	gotReviewID string
 	gotEvent    string
 	gotComment  github.PostCommentInput
+	gotThreadID string
+	gotResolved bool
 	called      bool
 }
 
@@ -87,6 +89,13 @@ func (m *mockAPI) PostComment(_ context.Context, _, _ string, number int, in git
 	m.gotNumber = number
 	m.gotComment = in
 	return &github.PostComment{ID: 555, ThreadID: "PRT_1"}, nil
+}
+
+func (m *mockAPI) ResolveThread(_ context.Context, threadID string, resolved bool) (*github.ResolveThread, error) {
+	m.called = true
+	m.gotThreadID = threadID
+	m.gotResolved = resolved
+	return &github.ResolveThread{Resolved: resolved}, nil
 }
 
 func deps(m *mockAPI) Deps {
@@ -293,6 +302,29 @@ func TestPostCommentReplyRoutes(t *testing.T) {
 	}
 	if m.gotComment.InReplyTo != "PRT_5" {
 		t.Errorf("reply not forwarded: %+v", m.gotComment)
+	}
+}
+
+func TestResolveThreadRoutes(t *testing.T) {
+	m := &mockAPI{}
+	res, err := deps(m).resolveThread(context.Background(), json.RawMessage(`{"owner":"o","repo":"r","number":3,"thread_id":"PRT_7","resolved":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.gotThreadID != "PRT_7" || !m.gotResolved {
+		t.Errorf("params not forwarded: id=%q resolved=%v", m.gotThreadID, m.gotResolved)
+	}
+	if res.(*github.ResolveThread).Resolved != true {
+		t.Errorf("result not forwarded: %+v", res)
+	}
+}
+
+func TestResolveThreadRequiresThreadID(t *testing.T) {
+	m := &mockAPI{}
+	_, err := deps(m).resolveThread(context.Background(), json.RawMessage(`{"owner":"o","repo":"r","number":3,"resolved":false}`))
+	wantBadRequest(t, err)
+	if m.called {
+		t.Error("GH must not be called without a thread_id")
 	}
 }
 

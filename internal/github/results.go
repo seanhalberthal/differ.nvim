@@ -135,6 +135,12 @@ type PostComment struct {
 	ThreadID string `json:"thread_id"`
 }
 
+// ResolveThread is the resolve_thread result: the thread's resolved state after the
+// toggle, echoed from GitHub.
+type ResolveThread struct {
+	Resolved bool `json:"resolved"`
+}
+
 // StartReview is the start_review result: the pending review's node id (a fresh
 // one, or the viewer's existing draft when start_review is replayed).
 type StartReview struct {

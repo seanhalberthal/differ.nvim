@@ -87,6 +87,21 @@ func (c *Client) GetPendingReview(ctx context.Context, owner, repo string, numbe
 	return out, nil
 }
 
+// ResolveThread toggles a review thread's resolved state, returning the state
+// GitHub reports after the mutation. threadID is the GraphQL node id from
+// get_threads (Thread.ThreadID).
+func (c *Client) ResolveThread(ctx context.Context, threadID string, resolved bool) (*ResolveThread, error) {
+	mutation := unresolveThreadMutation
+	if resolved {
+		mutation = resolveThreadMutation
+	}
+	var out resolveThreadGQL
+	if err := c.graphql(ctx, mutation, map[string]any{"threadId": threadID}, &out); err != nil {
+		return nil, err
+	}
+	return &ResolveThread{Resolved: out.Result.Thread.IsResolved}, nil
+}
+
 func deref(p *int) int {
 	if p == nil {
 		return 0

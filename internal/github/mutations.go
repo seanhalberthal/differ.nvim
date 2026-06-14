@@ -73,3 +73,19 @@ mutation AddThreadReply($threadId: ID!, $reviewId: ID, $body: String!) {
     comment { fullDatabaseId }
   }
 }`
+
+// resolveThreadMutation / unresolveThreadMutation toggle a thread's resolved state.
+// the mutation field is aliased to result so both decode into one shape.
+const resolveThreadMutation = `
+mutation Resolve($threadId: ID!) {
+  result: resolveReviewThread(input: {threadId: $threadId}) {
+    thread { isResolved }
+  }
+}`
+
+const unresolveThreadMutation = `
+mutation Unresolve($threadId: ID!) {
+  result: unresolveReviewThread(input: {threadId: $threadId}) {
+    thread { isResolved }
+  }
+}`
