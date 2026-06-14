@@ -89,3 +89,16 @@ mutation Unresolve($threadId: ID!) {
     thread { isResolved }
   }
 }`
+
+// markFileViewedMutation / unmarkFileViewedMutation toggle a file's per-viewer
+// viewed flag. the resulting state is deterministic (VIEWED / UNVIEWED), so the
+// payload is not read back.
+const markFileViewedMutation = `
+mutation MarkViewed($prId: ID!, $path: String!) {
+  markFileAsViewed(input: {pullRequestId: $prId, path: $path}) { clientMutationId }
+}`
+
+const unmarkFileViewedMutation = `
+mutation UnmarkViewed($prId: ID!, $path: String!) {
+  unmarkFileAsViewed(input: {pullRequestId: $prId, path: $path}) { clientMutationId }
+}`

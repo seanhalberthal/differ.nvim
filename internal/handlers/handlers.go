@@ -34,6 +34,7 @@ type API interface {
 	DiscardReview(ctx context.Context, reviewID string) error
 	PostComment(ctx context.Context, owner, repo string, number int, in github.PostCommentInput) (*github.PostComment, error)
 	ResolveThread(ctx context.Context, threadID string, resolved bool) (*github.ResolveThread, error)
+	SetFileViewed(ctx context.Context, owner, repo string, number int, path string, viewed bool) (*github.SetFileViewed, error)
 }
 
 // Deps are the handler dependencies, injected once at construction (no globals).
@@ -57,6 +58,7 @@ func NewRegistry(d Deps) Registry {
 		"discard_review":     d.discardReview,
 		"post_comment":       d.postComment,
 		"resolve_thread":     d.resolveThread,
+		"set_file_viewed":    d.setFileViewed,
 	}
 }
 

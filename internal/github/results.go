@@ -141,6 +141,12 @@ type ResolveThread struct {
 	Resolved bool `json:"resolved"`
 }
 
+// SetFileViewed is the set_file_viewed result: the per-file viewed state after the
+// toggle (VIEWED or UNVIEWED).
+type SetFileViewed struct {
+	ViewedState string `json:"viewed_state"`
+}
+
 // StartReview is the start_review result: the pending review's node id (a fresh
 // one, or the viewer's existing draft when start_review is replayed).
 type StartReview struct {

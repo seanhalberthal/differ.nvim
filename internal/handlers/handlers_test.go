@@ -25,6 +25,7 @@ type mockAPI struct {
 	gotComment  github.PostCommentInput
 	gotThreadID string
 	gotResolved bool
+	gotViewed   bool
 	called      bool
 }
 
@@ -96,6 +97,18 @@ func (m *mockAPI) ResolveThread(_ context.Context, threadID string, resolved boo
 	m.gotThreadID = threadID
 	m.gotResolved = resolved
 	return &github.ResolveThread{Resolved: resolved}, nil
+}
+
+func (m *mockAPI) SetFileViewed(_ context.Context, _, _ string, number int, path string, viewed bool) (*github.SetFileViewed, error) {
+	m.called = true
+	m.gotNumber = number
+	m.gotPath = path
+	m.gotViewed = viewed
+	state := "UNVIEWED"
+	if viewed {
+		state = "VIEWED"
+	}
+	return &github.SetFileViewed{ViewedState: state}, nil
 }
 
 func deps(m *mockAPI) Deps {
@@ -325,6 +338,29 @@ func TestResolveThreadRequiresThreadID(t *testing.T) {
 	wantBadRequest(t, err)
 	if m.called {
 		t.Error("GH must not be called without a thread_id")
+	}
+}
+
+func TestSetFileViewedRoutes(t *testing.T) {
+	m := &mockAPI{}
+	res, err := deps(m).setFileViewed(context.Background(), json.RawMessage(`{"owner":"o","repo":"r","number":3,"path":"a.go","viewed":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.gotPath != "a.go" || !m.gotViewed {
+		t.Errorf("params not forwarded: path=%q viewed=%v", m.gotPath, m.gotViewed)
+	}
+	if res.(*github.SetFileViewed).ViewedState != "VIEWED" {
+		t.Errorf("result not forwarded: %+v", res)
+	}
+}
+
+func TestSetFileViewedRequiresPath(t *testing.T) {
+	m := &mockAPI{}
+	_, err := deps(m).setFileViewed(context.Background(), json.RawMessage(`{"owner":"o","repo":"r","number":3,"viewed":true}`))
+	wantBadRequest(t, err)
+	if m.called {
+		t.Error("GH must not be called without a path")
 	}
 }
 
