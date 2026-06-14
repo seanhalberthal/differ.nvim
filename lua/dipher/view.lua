@@ -314,16 +314,23 @@ end
 -- panel calls this when a different file is selected so the View is re-sourced,
 -- not recreated (§8.6 separation of concerns). column count is layout-determined,
 -- so it never changes here, no relayout. `staging` rides along because the stage
--- direction is per-file (a staged entry unstages, an unstaged one stages)
+-- direction is per-file (a staged entry unstages, an unstaged one stages).
+-- `opts.focus_line` is a new-side file line to snap to (a re-source of the same
+-- file underneath the user); without it the cursor lands on the first unstaged hunk
 ---@param model dipher.DiffModel
 ---@param staging dipher.view.Staging|nil
-function View:set_source(model, staging)
+---@param opts? { focus_line?: integer }
+function View:set_source(model, staging, opts)
     self.model = model
     self.staging = staging
     self:_init_staged() -- a new file: reseed staged state from the fresh git read
     self:rerender({ layout = self.layout, context = self.context, deep_diff = self.deep_diff })
     self:_apply_folds() -- new file's ranges; windows unchanged so refold in place
-    self:_focus_first_hunk() -- land on the first unstaged hunk of the new file
+    if opts and opts.focus_line then
+        self:focus_new_line(opts.focus_line) -- hold position across an in-place refresh
+    else
+        self:_focus_first_hunk() -- land on the first unstaged hunk of the new file
+    end
 end
 
 -- swap the layout for this view (a pure re-render behind the map contract, §8.3).
@@ -521,6 +528,20 @@ function View:_focus_first_hunk()
     if lnum then
         pcall(vim.api.nvim_win_set_cursor, col.winid, { lnum, 0 })
     end
+end
+
+-- the new-side file line the cursor currently sits on, for holding position across
+-- an in-place re-source (an external refresh of the same file). read from the new-
+-- side column (the unified column in stacked, the right column in split) so it pairs
+-- with focus_new_line; nil when there's no live new side
+---@return integer|nil
+function View:cursor_new_line()
+    local col = self.columns[#self.columns]
+    if not (col and col.winid and vim.api.nvim_win_is_valid(col.winid)) then
+        return nil
+    end
+    local lnum = vim.api.nvim_win_get_cursor(col.winid)[1]
+    return nav.file_line(col.map, lnum)
 end
 
 -- snap to the hunk at or nearest the cursor's new-side line (`new_lnum`, where the

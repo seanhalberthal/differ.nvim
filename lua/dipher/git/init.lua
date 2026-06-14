@@ -621,17 +621,20 @@ function M.panel(opts)
     end
 
     -- (re)source the diff view from an entry's current git state. false when the
-    -- entry has no diff anymore (committed / fully staged / reverted outside dipher)
+    -- entry has no diff anymore (committed / fully staged / reverted outside dipher).
+    -- `focus_line` (a new-side file line) holds the cursor across an in-place refresh
+    -- of the same file; without it the view lands on the first unstaged hunk
     ---@param entry dipher.FileEntry
+    ---@param focus_line integer|nil
     ---@return boolean shown
-    local function show_entry(entry)
+    local function show_entry(entry, focus_line)
         local model = model_for(entry)
         if #model.hunks == 0 then
             return false
         end
         local staging = stage_for(entry)
         if view and view:is_open() then
-            view:set_source(model, staging)
+            view:set_source(model, staging, focus_line and { focus_line = focus_line } or nil)
         else
             view = require("dipher").diff_model(model, { staging = staging, can_stage = stageable })
         end
@@ -675,6 +678,9 @@ function M.panel(opts)
             panel:refresh()
         end
         if view and view:is_open() and active_entry then
+            -- the content shifted underneath the user; hold the cursor near where it was
+            -- (the nearest hunk to its new-side line) rather than snapping to the top
+            local focus_line = view:cursor_new_line()
             -- re-target the view to the file's current changes, preferring the side it
             -- was on; staging the whole file empties that side, so fall back to the
             -- other. show_entry records the signature when it sources
@@ -686,7 +692,7 @@ function M.panel(opts)
                     break
                 end
             end
-            if pick and show_entry(pick) then
+            if pick and show_entry(pick, focus_line) then
                 return
             end
         end

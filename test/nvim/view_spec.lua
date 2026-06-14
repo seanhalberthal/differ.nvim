@@ -422,6 +422,31 @@ describe("view re-source", function()
         assert.are.equal("python", vim.bo[buf].filetype)
         v:close()
     end)
+
+    it("holds the cursor near the prior hunk when re-sourced with a focus_line", function()
+        -- two hunks: line 2 (b->B) and line 8 (h->H)
+        local old, new = "a\nb\nc\nd\ne\nf\ng\nh\n", "a\nB\nc\nd\ne\nf\ng\nH\n"
+        local v = View.new(model(old, new), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local win = v.columns[1].winid
+
+        -- a bare re-source jumps to the first hunk (row 2: the deleted "b")
+        v:set_source(model(old, new))
+        assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
+
+        -- park on the second hunk, capture its new-side line, re-source preserving it:
+        -- the cursor holds on the second hunk (row 9) rather than snapping back to row 2
+        vim.api.nvim_win_set_cursor(win, { 10, 0 })
+        local line = v:cursor_new_line()
+        assert.are.equal(8, line) -- the new-side line under the cursor ("H")
+        v:set_source(model(old, new), nil, { focus_line = line })
+        assert.are.equal(9, vim.api.nvim_win_get_cursor(win)[1])
+        v:close()
+    end)
 end)
 
 describe("view jump-to-file", function()
