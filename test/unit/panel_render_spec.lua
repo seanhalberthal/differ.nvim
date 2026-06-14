@@ -35,6 +35,14 @@ describe("panel.render.lines", function()
         assert.are.equal("header", out.meta[1].kind)
     end)
 
+    it("uses the supplied count for the header, not the visible file rows", function()
+        -- collapse src so no file rows are visible; the header count must still be 2
+        local root = tree.build({ entry("src/a.lua"), entry("src/b.lua") })
+        local rows = tree.rows(root, "tree", { ["src"] = true })
+        local out = render.lines({ { title = "Unstaged", count = 2, rows = rows } })
+        assert.are.equal("Unstaged (2)", out.lines[1])
+    end)
+
     it("renders a file row with status letter and points cols at it", function()
         local root = tree.build({ entry("a.lua", "M") })
         local out = render.lines({ { title = nil, rows = tree.rows(root, "tree", {}) } })
@@ -46,20 +54,15 @@ describe("panel.render.lines", function()
         assert.are.equal(2, m.name_col) -- name after "M "
     end)
 
-    it("appends +/- counts only when nonzero, with byte cols for each", function()
+    it("keeps counts out of the line text; carries them on the entry", function()
+        -- the runtime layer pins +/- to the right edge as a virt_text extmark, so
+        -- the line text is just the name; the counts ride the FileEntry in meta
         local root = tree.build({ entry("a.lua", "M", 3, 1) })
         local out = render.lines({ { rows = tree.rows(root, "tree", {}) } })
-        assert.are.equal("M a.lua  +3 -1", out.lines[1])
+        assert.are.equal("M a.lua", out.lines[1])
         local m = out.meta[1]
-        -- "M a.lua  +3 -1": "+3" at cols 9..11, "-1" at cols 12..14
-        assert.are.equal("+3", out.lines[1]:sub(m.add_col + 1, m.add_end))
-        assert.are.equal("-1", out.lines[1]:sub(m.del_col + 1, m.del_end))
-    end)
-
-    it("leaves count cols nil when there are no changes", function()
-        local root = tree.build({ entry("a.lua", "M", 0, 0) })
-        local out = render.lines({ { rows = tree.rows(root, "tree", {}) } })
-        assert.is_nil(out.meta[1].add_col)
+        assert.are.equal(3, m.entry.additions)
+        assert.are.equal(1, m.entry.deletions)
     end)
 
     it("paints a devicon between the status letter and the name", function()
@@ -68,7 +71,7 @@ describe("panel.render.lines", function()
             return ">", "DevIconLua"
         end
         local out = render.lines({ { rows = tree.rows(root, "tree", {}) } }, nil, icon_for)
-        assert.are.equal("M > a.lua  +3 -1", out.lines[1])
+        assert.are.equal("M > a.lua", out.lines[1])
         local m = out.meta[1]
         assert.are.equal("DevIconLua", m.icon_hl)
         assert.are.equal(">", out.lines[1]:sub(m.icon_col + 1, m.icon_end))
@@ -87,6 +90,55 @@ describe("panel.render.lines", function()
         local root = tree.build({ entry("src/a.lua"), entry("src/b.lua") })
         local out = render.lines({ { rows = tree.rows(root, "tree", {}) } })
         assert.are.equal("▾ src/", out.lines[1])
-        assert.are.equal("  M a.lua", out.lines[2]) -- depth 1 => two-space indent
+        assert.are.equal(" M a.lua", out.lines[2]) -- depth 1 => one-space indent
+    end)
+
+    it("renders a dimmed common-prefix subtitle on the header", function()
+        local root = tree.build({ entry("a/b/c/x.lua") }, "a/b/")
+        local out = render.lines({
+            { title = "Changes", prefix = "a/b/", rows = tree.rows(root, "tree", {}) },
+        })
+        assert.are.equal("Changes (1) · a/b/", out.lines[1])
+        local m = out.meta[1]
+        assert.are.equal("header", m.kind)
+        assert.are.equal(" · a/b/", out.lines[1]:sub(m.prefix_col + 1, m.prefix_end))
+    end)
+
+    it("front-truncates a long name to fit the width, reserving count room", function()
+        local root = tree.build({ entry("a-very-long-filename.lua", "M", 3, 1) })
+        local out = render.lines({ { rows = tree.rows(root, "tree", {}) } }, nil, nil, nil, 16)
+        assert.is_true(out.lines[1]:find("…", 1, true) ~= nil)
+        assert.is_true(out.lines[1]:find("M a%-very", 1, false) ~= nil) -- keeps the front
+        -- width 16: prefix "M " (2) + reserve "+3 -1 " (6) leaves 8 cols for the name.
+        -- "…" is 3 bytes but one column, so measure display width via a 1-byte stand-in
+        local disp = (out.lines[1]:gsub("…", "."))
+        assert.is_true(#disp <= 16 - 6)
+    end)
+
+    it("skips truncation when no width is given (headless)", function()
+        local root = tree.build({ entry("a-very-long-filename.lua", "M", 3, 1) })
+        local out = render.lines({ { rows = tree.rows(root, "tree", {}) } })
+        assert.are.equal("M a-very-long-filename.lua", out.lines[1])
+    end)
+
+    it("renders the dimmed parent trailer in name mode with its byte cols", function()
+        local root = tree.build({ entry("src/sub/b.lua", "M", 0, 0) })
+        local out = render.lines({ { rows = tree.rows(root, "name", {}) } })
+        assert.are.equal("M b.lua  ·sub/", out.lines[1])
+        local m = out.meta[1]
+        assert.are.equal("·sub/", out.lines[1]:sub(m.context_col + 1, m.context_end))
+    end)
+
+    it("keeps the name-mode parent visible at a tight width by truncating the name", function()
+        -- a long basename AND a long parent must not push the parent off the right
+        -- edge (where it would clip and silently vanish); the name truncates first
+        local root =
+            tree.build({ entry("calendar/appointment-detail/TerminalSummary.test.tsx", "M", 0, 7) })
+        local out = render.lines({ { rows = tree.rows(root, "name", {}) } }, nil, nil, nil, 31)
+        local m = out.meta[1]
+        assert.is_not_nil(m.context_col) -- the parent trailer is present
+        assert.is_true(out.lines[1]:find("…", 1, true) ~= nil) -- name was truncated
+        local disp = (out.lines[1]:gsub("…", "."):gsub("·", "."))
+        assert.is_true(#disp <= 31 - 5) -- fits within width less the "+0 -7 " reserve
     end)
 end)

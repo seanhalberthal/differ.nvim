@@ -29,6 +29,20 @@ function M.to_lines(text)
     return lines
 end
 
+-- right-truncate `s` to at most `max` columns, keeping the front (the part that
+-- distinguishes one filename from another) with a trailing "…". byte-based, so it
+-- approximates for multibyte (filenames are ASCII in practice). returns `s`
+-- unchanged when it fits or `max` is too small to hold a char plus the "…"
+---@param s string
+---@param max integer
+---@return string
+function M.truncate_end(s, max)
+    if #s <= max or max < 2 then
+        return s
+    end
+    return s:sub(1, max - 1) .. "…" -- "…" is one display column
+end
+
 -- vim.text.diff is line-oriented; an unterminated final line reads as changed,
 -- so normalise to newline-terminated before diffing
 ---@param text string

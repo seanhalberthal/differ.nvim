@@ -4,7 +4,7 @@
 ---@field position "bottom"|"top"|"left"|"right"
 ---@field height integer  -- used for top/bottom
 ---@field width integer   -- used for left/right
----@field listing "tree"|"flat"
+---@field listing "tree"|"name"
 ---@field progress boolean  -- file-position meter in the panel winbar
 
 ---@class dipher.Config
@@ -63,6 +63,10 @@ M.defaults = {
         scroll_up = "b",
         select = { "<CR>", "o" }, -- panel, history
         help = "g?", -- panel, history
+        toggle_listing = "i", -- panel: toggle tree / name
+        close_node = "c", -- panel: collapse the dir under the cursor (or its parent)
+        close_all = "C", -- panel: collapse every dir
+        open_all = "O", -- panel: expand every dir
         stage = "s", -- diff (hunk-level), panel (file-level)
         unstage = "u",
         stage_all = "S",

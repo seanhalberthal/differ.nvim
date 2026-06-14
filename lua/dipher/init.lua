@@ -80,7 +80,7 @@ end
 
 -- open (or toggle) the file panel over a local git change set (§8.6). `opts` are
 -- runtime, not setup config: `rev` (rev spec, string or args), `position`
--- ("bottom"|"top"|"left"|"right"), `listing` ("tree"|"flat"), `height`, `width`.
+-- ("bottom"|"top"|"left"|"right"), `listing` ("tree"|"name"), `height`, `width`.
 -- the live panel is reachable via `require("dipher.panel").current()` for runtime
 -- tweaks, e.g. `:current():set_position("left")` / `:toggle_listing()`
 ---@param opts table|nil

@@ -27,6 +27,50 @@ describe("panel.tree.build", function()
     end)
 end)
 
+describe("panel.tree.common_dir", function()
+    it("returns the dir prefix shared by every entry", function()
+        local p = tree.common_dir({ entry("a/b/c/x.lua"), entry("a/b/d/y.lua") })
+        assert.are.equal("a/b/", p)
+    end)
+
+    it("returns empty when nothing is shared", function()
+        assert.are.equal("", tree.common_dir({ entry("a/x.lua"), entry("b/y.lua") }))
+        assert.are.equal("", tree.common_dir({ entry("x.lua"), entry("a/y.lua") }))
+    end)
+
+    it("aligns on dir boundaries, not characters", function()
+        -- "app/" and "apple/" share no dir even though they share a char prefix
+        assert.are.equal("", tree.common_dir({ entry("app/x.lua"), entry("apple/y.lua") }))
+    end)
+end)
+
+describe("panel.tree.build with strip", function()
+    it("builds structure relative to the prefix but keeps full paths on entries", function()
+        local root = tree.build({ entry("a/b/c/x.lua"), entry("a/b/d/y.lua") }, "a/b/")
+        local rows = tree.rows(root, "tree", {})
+        -- c/ and d/ are now top-level dirs; the files still carry their full path
+        assert.are.equal("dir", rows[1].kind)
+        assert.are.equal("c", rows[1].name)
+        assert.are.equal(0, rows[1].depth)
+        local file = rows[2]
+        assert.are.equal("a/b/c/x.lua", file.entry.path) -- selection key unchanged
+        assert.are.equal("x.lua", file.name)
+    end)
+end)
+
+describe("panel.tree.dir_paths", function()
+    it("lists every dir path regardless of collapse state", function()
+        local root = tree.build({ entry("src/a.lua"), entry("src/sub/b.lua"), entry("lib/c.lua") })
+        local got = tree.dir_paths(root)
+        table.sort(got)
+        assert.are.same({ "lib", "src", "src/sub" }, got)
+    end)
+
+    it("returns nothing when all files are top-level", function()
+        assert.are.same({}, tree.dir_paths(tree.build({ entry("a.lua"), entry("b.lua") })))
+    end)
+end)
+
 describe("panel.tree.rows", function()
     it("emits dirs before files, nested by depth, in tree mode", function()
         local root = tree.build({ entry("src/a.lua"), entry("src/sub/b.lua") })
@@ -51,14 +95,18 @@ describe("panel.tree.rows", function()
         assert.is_true(collapsed[1].collapsed)
     end)
 
-    it("flat mode lists leaves with full paths and no depth", function()
-        local root = tree.build({ entry("src/sub/b.lua"), entry("src/a.lua") })
-        local rows = tree.rows(root, "flat", {})
+    it("name mode leads with the basename and carries the parent as context", function()
+        local root = tree.build({ entry("src/sub/b.lua"), entry("a.lua") })
+        local rows = tree.rows(root, "name", {})
         assert.are.equal(2, #rows)
+        local by_path = {}
         for _, r in ipairs(rows) do
-            assert.are.equal("file", r.kind)
             assert.are.equal(0, r.depth)
-            assert.are.equal(r.entry.path, r.name) -- full path as the label
+            by_path[r.path] = r
         end
+        assert.are.equal("b.lua", by_path["src/sub/b.lua"].name)
+        assert.are.equal("sub/", by_path["src/sub/b.lua"].context) -- immediate parent
+        assert.are.equal("a.lua", by_path["a.lua"].name)
+        assert.is_nil(by_path["a.lua"].context) -- root-level file has no parent
     end)
 end)

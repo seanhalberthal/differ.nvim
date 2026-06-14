@@ -72,20 +72,23 @@ function M.panel()
     if not (panel and panel.winid == win) then
         return ""
     end
-    local total, idx = 0, 0
-    local cur = vim.api.nvim_win_get_cursor(win)[1]
-    for i, m in ipairs(panel.meta) do
-        if m.kind == "file" then
-            total = total + 1
-            if i <= cur then
-                idx = total
-            end
-        end
-    end
+    -- total = every file in the change set (fold-independent), not just the rows
+    -- currently visible; idx = the fold-independent number of the file at/before the
+    -- cursor, so the meter stays accurate when dirs are collapsed
+    local total = panel.file_total or 0
     if total == 0 then
         return ""
     end
-    idx = math.max(idx, 1)
+    local cur = vim.api.nvim_win_get_cursor(win)[1]
+    local idx
+    for i = math.min(cur, #panel.meta), 1, -1 do
+        local m = panel.meta[i]
+        if m and m.kind == "file" then
+            idx = m.file_index
+            break
+        end
+    end
+    idx = math.max(idx or 1, 1)
     local width = 12
     local filled = math.floor(width * idx / total + 0.5)
     local bar = string.rep("█", filled) .. string.rep("░", width - filled)

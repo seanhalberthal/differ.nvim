@@ -116,8 +116,9 @@ describe(":Dipher panel", function()
         local p = Panel.current()
         assert.is_not_nil(p)
         assert.is_true(p:is_open())
-        -- empty Staged/Untracked sections are dropped, leaving one Unstaged section
-        assert.are.same({ "Unstaged (1)", "M a.lua  +1 -1" }, body(p))
+        -- empty Staged/Untracked sections are dropped, leaving one Unstaged section.
+        -- the +/- counts aren't in the text: they're a right-aligned virt_text extmark
+        assert.are.same({ "Unstaged (1)", "M a.lua" }, body(p))
 
         git_src.panel({}) -- toggle
         assert.is_nil(Panel.current())
@@ -212,9 +213,9 @@ describe(":Dipher panel", function()
         local p = Panel.current()
         assert.are.same({
             "Staged (1)",
-            "A z.lua  +1 -0",
+            "A z.lua",
             "Unstaged (1)",
-            "M a.lua  +1 -1",
+            "M a.lua",
             "Untracked (1)",
             "? u.lua",
         }, body(p))

@@ -23,6 +23,8 @@ local LINKS = {
     dipherPanelRoot = { link = "Directory" },
     dipherPanelHelp = { link = "Comment" },
     dipherPanelDir = { link = "Directory" },
+    -- dimmed "·parent/" trailer after a basename in the name listing (§8.6)
+    dipherPanelContext = { link = "Comment" },
     -- history panel commit rows (§8.4): the author column (sha reuses dipherPanelDir,
     -- the date reuses dipherPanelHelp, the counts reuse the panel count groups) and
     -- the ref-decoration tag in branch-range mode

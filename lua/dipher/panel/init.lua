@@ -65,7 +65,7 @@ local STATUS_HL = {
 ---@field return_tab integer|nil
 ---@field progress boolean  -- file-position meter in the panel winbar
 ---@field sections dipher.panel.Section[]
----@field listing "tree"|"flat"
+---@field listing "tree"|"name"
 ---@field collapsed table<string, boolean>
 ---@field on_select fun(entry: dipher.FileEntry)
 ---@field on_close fun()|nil
@@ -80,7 +80,9 @@ local STATUS_HL = {
 ---@field width integer
 ---@field lines string[]
 ---@field meta dipher.panel.LineMeta[]
+---@field file_total integer|nil  -- total files in the change set (fold-independent)
 ---@field augroup integer|nil  -- autocmd group for the external-change refresh
+---@field win_augroup integer|nil  -- autocmd group for the resize re-fit
 local Panel = {}
 Panel.__index = Panel
 
@@ -94,7 +96,7 @@ Panel.__index = Panel
 ---@field actions? dipher.panel.Actions -- file-level staging hooks (§8.6 slice C)
 ---@field keymaps? table<string, string|string[]|false> -- resolved panel action -> lhs (§4.3)
 ---@field icons? boolean -- filetype devicons (default true when available)
----@field listing? "tree"|"flat"
+---@field listing? "tree"|"name"
 ---@field position? "bottom"|"top"|"left"|"right"
 ---@field height? integer
 ---@field width? integer
@@ -171,18 +173,60 @@ function Panel:focus_file(path)
     return false
 end
 
+-- build a section's tree the way render does: in tree mode, strip the shared dir
+-- prefix when it's 2+ levels deep (that's where indentation hurts, and a single
+-- shared dir is worth keeping as a foldable row), shown once as a header subtitle.
+-- returns the root and that stripped prefix ("" when none). fold-all ops reuse this
+-- so their collapse keys match the dir.path values tree.rows reads
+---@param sec dipher.panel.Section
+---@return dipher.panel.Node root, string strip
+function Panel:_section_root(sec)
+    local strip = ""
+    if self.listing == "tree" then
+        local common = tree.common_dir(sec.entries)
+        local _, levels = common:gsub("/", "")
+        if levels >= 2 then
+            strip = common
+        end
+    end
+    return tree.build(sec.entries, strip), strip
+end
+
 -- re-flatten the sections (honouring listing + fold state) and repaint the
 -- buffer. cursor line is preserved across re-renders (clamped)
 function Panel:render()
     local blocks = {}
+    -- absolute file numbering across the whole change set, in display order and
+    -- independent of which dirs are folded, so the section counts + winbar meter
+    -- stay accurate when collapsed (entry -> 1-based index)
+    local abs_of, total = {}, 0
     for _, sec in ipairs(self.sections) do
-        local root = tree.build(sec.entries)
-        blocks[#blocks + 1] =
-            { title = sec.title, rows = tree.rows(root, self.listing, self.collapsed) }
+        local root, strip = self:_section_root(sec)
+        for _, row in ipairs(tree.rows(root, "tree", {})) do -- fully expanded
+            if row.kind == "file" then
+                total = total + 1
+                abs_of[row.entry] = total
+            end
+        end
+        blocks[#blocks + 1] = {
+            title = sec.title,
+            prefix = strip ~= "" and strip or nil,
+            count = #sec.entries,
+            rows = tree.rows(root, self.listing, self.collapsed),
+        }
     end
+    self.file_total = total
     local header = self.root and { path = self.root, help = "g?" } or nil
-    local out = render.lines(blocks, header, self.icon_for, self.footer)
+    -- live width drives the name truncation; fall back to the configured width
+    -- when the window isn't open yet (headless construction / tests)
+    local width = self:is_open() and vim.api.nvim_win_get_width(self.winid) or self.width
+    local out = render.lines(blocks, header, self.icon_for, self.footer, width)
     self.lines, self.meta = out.lines, out.meta
+    for _, m in ipairs(self.meta) do
+        if m.kind == "file" then
+            m.file_index = abs_of[m.entry]
+        end
+    end
 
     vim.bo[self.bufnr].modifiable = true
     vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, out.lines)
@@ -213,13 +257,23 @@ function Panel:_highlight()
                 { end_col = eol, hl_group = "dipherPanelHelp" }
             )
         elseif m.kind == "header" or m.kind == "foothead" then
+            local title_end = m.prefix_col or eol
             vim.api.nvim_buf_set_extmark(
                 self.bufnr,
                 ns,
                 row,
                 0,
-                { end_col = eol, hl_group = "dipherPanelHeader" }
+                { end_col = title_end, hl_group = "dipherPanelHeader" }
             )
+            if m.prefix_col then
+                vim.api.nvim_buf_set_extmark(
+                    self.bufnr,
+                    ns,
+                    row,
+                    m.prefix_col,
+                    { end_col = m.prefix_end, hl_group = "dipherPanelContext" }
+                )
+            end
         elseif m.kind == "footrev" then
             vim.api.nvim_buf_set_extmark(
                 self.bufnr,
@@ -256,21 +310,29 @@ function Panel:_highlight()
                     { end_col = m.icon_end, hl_group = m.icon_hl }
                 )
             end
-            if m.add_col then
+            if m.context_col then
                 vim.api.nvim_buf_set_extmark(
                     self.bufnr,
                     ns,
                     row,
-                    m.add_col,
-                    { end_col = m.add_end, hl_group = "dipherPanelCountAdd" }
+                    m.context_col,
+                    { end_col = m.context_end, hl_group = "dipherPanelContext" }
                 )
-                vim.api.nvim_buf_set_extmark(
-                    self.bufnr,
-                    ns,
-                    row,
-                    m.del_col,
-                    { end_col = m.del_end, hl_group = "dipherPanelCountDelete" }
-                )
+            end
+            local e = m.entry
+            if e and (e.additions > 0 or e.deletions > 0) then
+                -- pin the diffstat to the window's right edge as virtual text, so
+                -- it stays visible at any nesting depth (the line text holds no
+                -- counts; render.lines reserves the room and truncates the name)
+                vim.api.nvim_buf_set_extmark(self.bufnr, ns, row, 0, {
+                    virt_text = {
+                        { ("+%d"):format(e.additions), "dipherPanelCountAdd" },
+                        { " ", "Normal" },
+                        { ("-%d"):format(e.deletions), "dipherPanelCountDelete" },
+                        { " ", "Normal" },
+                    },
+                    virt_text_pos = "right_align",
+                })
             end
         end
     end
@@ -287,6 +349,66 @@ end
 ---@param path string
 function Panel:toggle_fold(path)
     self.collapsed[path] = not self.collapsed[path]
+    local lnum = self.winid and vim.api.nvim_win_get_cursor(self.winid)[1] or 1
+    self:render()
+    if self.winid and vim.api.nvim_win_is_valid(self.winid) then
+        vim.api.nvim_win_set_cursor(self.winid, { math.min(lnum, math.max(#self.lines, 1)), 0 })
+    end
+end
+
+-- the line of the nearest dir row above `lnum` with a shallower depth: the parent
+-- directory of the row at `lnum`, or nil if it's already top-level
+---@param lnum integer
+---@return integer|nil
+function Panel:_parent_dir_line(lnum)
+    local m = self.meta[lnum]
+    if not m or not m.depth then
+        return nil
+    end
+    for i = lnum - 1, 1, -1 do
+        local p = self.meta[i]
+        if p and p.kind == "dir" and (p.depth or 0) < m.depth then
+            return i
+        end
+    end
+    return nil
+end
+
+-- c: close the directory under the cursor. on an open dir, collapse it; on a file
+-- or an already-closed dir, collapse its parent and move there (tree-nav idiom)
+function Panel:close_node()
+    if not self:is_open() then
+        return
+    end
+    local lnum = vim.api.nvim_win_get_cursor(self.winid)[1]
+    local m = self.meta[lnum]
+    if not m then
+        return
+    end
+    if m.kind == "dir" and not self.collapsed[m.path] then
+        self:toggle_fold(m.path)
+        return
+    end
+    local parent = self:_parent_dir_line(lnum)
+    if parent then
+        vim.api.nvim_win_set_cursor(self.winid, { parent, 0 })
+        self:toggle_fold(self.meta[parent].path)
+    end
+end
+
+-- set every directory's fold state and repaint, keeping the cursor put. C / O bind
+-- collapse-all / expand-all to this
+---@param collapsed boolean
+function Panel:set_all_folds(collapsed)
+    if collapsed then
+        for _, sec in ipairs(self.sections) do
+            for _, path in ipairs(tree.dir_paths((self:_section_root(sec)))) do
+                self.collapsed[path] = true
+            end
+        end
+    else
+        self.collapsed = {}
+    end
     local lnum = self.winid and vim.api.nvim_win_get_cursor(self.winid)[1] or 1
     self:render()
     if self.winid and vim.api.nvim_win_is_valid(self.winid) then
@@ -467,9 +589,12 @@ function Panel:show_help()
         " dipher panel",
         "",
         " <CR> / o   open file / toggle fold",
+        " c          close node / parent",
+        " C / O      close / open all nodes",
         " ]f / [f    next / previous file",
         " ]c / [c    next / previous hunk",
         " f / b      scroll diff down / up",
+        " i          toggle listing (tree / name)",
     }
     if self.actions then
         vim.list_extend(lines, {
@@ -529,6 +654,23 @@ function Panel:_setup_window()
         set_wo(win, "winfixheight", true)
     end
 
+    -- re-render on resize so the name truncation re-fits the new width (clear=true
+    -- so re-opening / repositioning doesn't stack duplicate autocmds)
+    self.win_augroup =
+        vim.api.nvim_create_augroup("dipher.panel.win." .. self.bufnr, { clear = true })
+    vim.api.nvim_create_autocmd({ "WinResized", "VimResized" }, {
+        group = self.win_augroup,
+        desc = "dipher: re-fit the panel name truncation on resize",
+        callback = function()
+            if not self:is_open() then
+                return
+            end
+            local lnum = vim.api.nvim_win_get_cursor(self.winid)[1]
+            self:render()
+            self:_restore_cursor(lnum)
+        end,
+    })
+
     local km = self.keymaps
     local function map(spec, fn, desc)
         bind(self.bufnr, spec, fn, "dipher panel: " .. desc)
@@ -553,6 +695,18 @@ function Panel:_setup_window()
     map(km.help, function()
         self:show_help()
     end, "help")
+    map(km.toggle_listing, function()
+        self:toggle_listing()
+    end, "toggle listing (tree / name)")
+    map(km.close_node, function()
+        self:close_node()
+    end, "close node / parent")
+    map(km.close_all, function()
+        self:set_all_folds(true)
+    end, "close all nodes")
+    map(km.open_all, function()
+        self:set_all_folds(false)
+    end, "open all nodes")
     map(km.scroll_down, function()
         self:scroll("down")
     end, "scroll down a quarter page")
@@ -668,8 +822,8 @@ end
 
 -- runtime API (§8.3-style per-view control, not setup config) ----------------
 
--- switch tree <-> flat listing live
----@param listing "tree"|"flat"
+-- switch the listing mode live (tree / name)
+---@param listing "tree"|"name"
 function Panel:set_listing(listing)
     self.listing = listing
     if self:is_open() then
@@ -679,8 +833,9 @@ function Panel:set_listing(listing)
     end
 end
 
+-- toggle the listing mode: tree <-> name
 function Panel:toggle_listing()
-    self:set_listing(self.listing == "tree" and "flat" or "tree")
+    self:set_listing(self.listing == "tree" and "name" or "tree")
 end
 
 -- move the panel to a new position live, preserving the buffer, fold state, and
@@ -710,6 +865,10 @@ function Panel:close()
     if self.augroup then
         pcall(vim.api.nvim_del_augroup_by_id, self.augroup)
         self.augroup = nil
+    end
+    if self.win_augroup then
+        pcall(vim.api.nvim_del_augroup_by_id, self.win_augroup)
+        self.win_augroup = nil
     end
     if vim.api.nvim_buf_is_valid(self.bufnr) then
         vim.api.nvim_buf_delete(self.bufnr, { force = true })

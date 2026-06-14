@@ -3,9 +3,11 @@
 -- computed here so the runtime highlighter (panel/init.lua) and navigation read
 -- authoritative positions rather than re-deriving them. no nvim API
 
+local text = require("dipher.util.text")
+
 local M = {}
 
-local INDENT = "  "
+local INDENT = " "
 local FOLD_OPEN, FOLD_CLOSED = "▾", "▸"
 
 ---@class dipher.panel.LineMeta
@@ -14,18 +16,22 @@ local FOLD_OPEN, FOLD_CLOSED = "▾", "▸"
 ---@field path string|nil
 ---@field status string|nil
 ---@field collapsed boolean|nil
+---@field depth integer|nil       -- tree depth (dir + file rows), for parent lookup
+---@field file_index integer|nil  -- 1-based position among all files (fold-independent); stamped by the panel
 ---@field status_col integer|nil  -- byte col of the status letter (file rows)
 ---@field name_col integer|nil    -- byte col where the name starts
 ---@field icon_col integer|nil    -- byte range of the devicon glyph (when shown)
 ---@field icon_end integer|nil
 ---@field icon_hl string|nil      -- devicon highlight group
----@field add_col integer|nil     -- byte range of the +N count (file rows, when shown)
----@field add_end integer|nil
----@field del_col integer|nil     -- byte range of the -M count
----@field del_end integer|nil
+---@field context_col integer|nil -- byte range of the dimmed "·parent/" trailer (name listing)
+---@field context_end integer|nil
+---@field prefix_col integer|nil  -- header rows: byte col where the dimmed common-prefix subtitle begins
+---@field prefix_end integer|nil
 
 ---@class dipher.panel.Block
 ---@field title string|nil               -- section header, nil = no header row
+---@field prefix string|nil              -- common dir stripped in tree mode, shown as a subtitle
+---@field count integer|nil              -- file count for the header; defaults to the visible file rows
 ---@field rows dipher.panel.Row[]
 
 ---@param rows dipher.panel.Row[]
@@ -48,13 +54,17 @@ end
 -- optional header (repo path + `Help: g?` + blank) prefixes the sections (§8.6),
 -- and an optional `footer` rev appends a "Showing changes for:" block.
 -- `icon_for(path)` (supplied by the runtime layer, nvim-web-devicons, so this
--- stays pure) returns a `(glyph, hl_group)` pair painted before each filename
+-- stays pure) returns a `(glyph, hl_group)` pair painted before each filename.
+-- the +/- counts aren't in the line text: the runtime layer pins them to the
+-- right edge as a virtual-text extmark, so `width` (when given) only reserves
+-- room for them and middle-truncates the filename to fit the rest
 ---@param blocks dipher.panel.Block[]
 ---@param header dipher.panel.Header|nil
 ---@param icon_for nil|fun(path: string): string|nil, string|nil
 ---@param footer string|nil  -- rev spec shown under "Showing changes for:"
+---@param width integer|nil  -- panel window width; nil skips truncation (headless)
 ---@return { lines: string[], meta: dipher.panel.LineMeta[] }
-function M.lines(blocks, header, icon_for, footer)
+function M.lines(blocks, header, icon_for, footer, width)
     local lines, meta = {}, {}
     if header then
         if header.path then
@@ -69,17 +79,33 @@ function M.lines(blocks, header, icon_for, footer)
         meta[#meta + 1] = { kind = "blank" }
     end
     for _, block in ipairs(blocks) do
-        if block.title then
-            lines[#lines + 1] = ("%s (%d)"):format(block.title, count_files(block.rows))
-            meta[#meta + 1] = { kind = "header" }
+        if block.title or block.prefix then
+            -- count is the section's true file total (fold-independent); fall back
+            -- to the visible file rows when the caller doesn't supply it (tests)
+            local n = block.count or count_files(block.rows)
+            local head = block.title and ("%s (%d)"):format(block.title, n) or ""
+            local m = { kind = "header" }
+            if block.prefix then
+                local sep = head ~= "" and " · " or ""
+                m.prefix_col = #head -- byte col where the dimmed " · prefix" begins
+                head = head .. sep .. block.prefix
+                m.prefix_end = #head
+            end
+            lines[#lines + 1] = head
+            meta[#meta + 1] = m
         end
         for _, row in ipairs(block.rows) do
             local indent = INDENT:rep(row.depth)
             if row.kind == "dir" then
                 local prefix = indent .. (row.collapsed and FOLD_CLOSED or FOLD_OPEN) .. " "
                 lines[#lines + 1] = prefix .. row.name .. "/"
-                meta[#meta + 1] =
-                    { kind = "dir", path = row.path, collapsed = row.collapsed, name_col = #prefix }
+                meta[#meta + 1] = {
+                    kind = "dir",
+                    path = row.path,
+                    collapsed = row.collapsed,
+                    depth = row.depth,
+                    name_col = #prefix,
+                }
             else
                 local e = row.entry
                 local prefix = indent .. e.status .. " "
@@ -88,6 +114,7 @@ function M.lines(blocks, header, icon_for, footer)
                     entry = e,
                     path = row.path,
                     status = e.status,
+                    depth = row.depth,
                     status_col = #indent,
                 }
                 if icon_for then
@@ -100,16 +127,45 @@ function M.lines(blocks, header, icon_for, footer)
                     end
                 end
                 m.name_col = #prefix
-                local line = prefix .. row.name
+                -- reserve right-edge room for the pinned +/- counts so text doesn't
+                -- slide under them; the counts are a virt_text extmark (right_align),
+                -- painted by the runtime layer, not part of the line text
+                local reserve = 0
                 if e.additions and (e.additions > 0 or e.deletions > 0) then
-                    local add = ("+%d"):format(e.additions)
-                    local del = ("-%d"):format(e.deletions)
-                    m.add_col = #line + 2 -- after the two-space separator
-                    m.add_end = m.add_col + #add
-                    m.del_col = m.add_end + 1 -- after the single space
-                    m.del_end = m.del_col + #del
-                    line = line .. "  " .. add .. " " .. del
+                    reserve = #("+" .. e.additions) + #("-" .. e.deletions) + 2
                 end
+                local name, trailer = row.name, ""
+                if row.context then
+                    -- name listing: "name  ·parent/" with the counts pinned right.
+                    -- keep BOTH visible when the column is tight by truncating the
+                    -- name first (the primary token), then the parent only if a
+                    -- floored name still won't fit (else a long parent clips off the
+                    -- right edge and silently vanishes)
+                    local ctx = "·" .. row.context
+                    if width then
+                        local name_min = 6
+                        local budget = width - #prefix - reserve - 2 -- name + ctx, less the gap
+                        if #name + #ctx > budget then
+                            local ctx_max = math.max(budget - name_min, 3)
+                            if #ctx > ctx_max then
+                                ctx = text.truncate_end(ctx, ctx_max)
+                            end
+                            name = text.truncate_end(name, math.max(budget - #ctx, 1))
+                        end
+                    end
+                    trailer = "  " .. ctx
+                elseif width then
+                    local avail = width - #prefix - reserve
+                    if avail >= 1 then
+                        name = text.truncate_end(name, avail)
+                    end
+                end
+                local line = prefix .. name
+                if trailer ~= "" then
+                    m.context_col = #line + 2 -- byte col of the "·"
+                    m.context_end = #line + #trailer
+                end
+                line = line .. trailer
                 lines[#lines + 1] = line
                 meta[#meta + 1] = m
             end
