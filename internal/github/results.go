@@ -147,6 +147,13 @@ type SetFileViewed struct {
 	ViewedState string `json:"viewed_state"`
 }
 
+// Merge is the merge_pr result: whether the PR merged and the resulting merge commit
+// sha (empty on an already-merged PR, where no new commit is produced).
+type Merge struct {
+	Merged bool   `json:"merged"`
+	SHA    string `json:"sha,omitempty"`
+}
+
 // StartReview is the start_review result: the pending review's node id (a fresh
 // one, or the viewer's existing draft when start_review is replayed).
 type StartReview struct {

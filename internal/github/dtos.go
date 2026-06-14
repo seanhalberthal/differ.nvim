@@ -253,3 +253,32 @@ type resolveThreadGQL struct {
 		} `json:"thread"`
 	} `json:"result"`
 }
+
+// mergeLookupGQL is the merge_pr pre-flight: node id, merged flag, mergeability, and
+// the head ref node id for an optional branch delete.
+type mergeLookupGQL struct {
+	Repository struct {
+		PullRequest struct {
+			ID               string `json:"id"`
+			Merged           bool   `json:"merged"`
+			Mergeable        string `json:"mergeable"`
+			MergeStateStatus string `json:"mergeStateStatus"`
+			HeadRef          struct {
+				ID string `json:"id"`
+			} `json:"headRef"`
+		} `json:"pullRequest"`
+	} `json:"repository"`
+}
+
+// mergePRGQL is the mergePullRequest response: the merged flag and the merge commit
+// sha.
+type mergePRGQL struct {
+	MergePullRequest struct {
+		PullRequest struct {
+			Merged      bool `json:"merged"`
+			MergeCommit struct {
+				Oid string `json:"oid"`
+			} `json:"mergeCommit"`
+		} `json:"pullRequest"`
+	} `json:"mergePullRequest"`
+}

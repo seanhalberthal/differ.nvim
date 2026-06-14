@@ -26,6 +26,7 @@ type mockAPI struct {
 	gotThreadID string
 	gotResolved bool
 	gotViewed   bool
+	gotMethod   string
 	called      bool
 }
 
@@ -109,6 +110,13 @@ func (m *mockAPI) SetFileViewed(_ context.Context, _, _ string, number int, path
 		state = "VIEWED"
 	}
 	return &github.SetFileViewed{ViewedState: state}, nil
+}
+
+func (m *mockAPI) MergePR(_ context.Context, _, _ string, number int, method string, _ bool, _, _ string) (*github.Merge, error) {
+	m.called = true
+	m.gotNumber = number
+	m.gotMethod = method
+	return &github.Merge{Merged: true, SHA: "sha"}, nil
 }
 
 func deps(m *mockAPI) Deps {
@@ -361,6 +369,35 @@ func TestSetFileViewedRequiresPath(t *testing.T) {
 	wantBadRequest(t, err)
 	if m.called {
 		t.Error("GH must not be called without a path")
+	}
+}
+
+// the protocol's lowercase method maps to the GraphQL enum before reaching GH.
+func TestMergePRMapsMethod(t *testing.T) {
+	cases := map[string]string{"squash": "SQUASH", "merge": "MERGE", "rebase": "REBASE"}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			m := &mockAPI{}
+			res, err := deps(m).mergePR(context.Background(), json.RawMessage(`{"owner":"o","repo":"r","number":3,"method":"`+in+`"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.gotMethod != want {
+				t.Errorf("method %q mapped to %q, want %q", in, m.gotMethod, want)
+			}
+			if !res.(*github.Merge).Merged {
+				t.Errorf("result not forwarded: %+v", res)
+			}
+		})
+	}
+}
+
+func TestMergePRRejectsBadMethod(t *testing.T) {
+	m := &mockAPI{}
+	_, err := deps(m).mergePR(context.Background(), json.RawMessage(`{"owner":"o","repo":"r","number":3,"method":"fast-forward"}`))
+	wantBadRequest(t, err)
+	if m.called {
+		t.Error("GH must not be called for an unknown merge method")
 	}
 }
 

@@ -102,3 +102,36 @@ const unmarkFileViewedMutation = `
 mutation UnmarkViewed($prId: ID!, $path: String!) {
   unmarkFileAsViewed(input: {pullRequestId: $prId, path: $path}) { clientMutationId }
 }`
+
+// mergeLookupQuery fetches the facts merge_pr pre-checks before firing a merge: the
+// PR node id, whether it is already merged, its mergeability, and the head ref id
+// (for an optional branch delete).
+const mergeLookupQuery = `
+query MergeLookup($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      id
+      merged
+      mergeable
+      mergeStateStatus
+      headRef { id }
+    }
+  }
+}`
+
+// mergePRMutation merges the PR with the chosen method and optional commit message.
+const mergePRMutation = `
+mutation Merge($prId: ID!, $method: PullRequestMergeMethod!, $headline: String, $body: String) {
+  mergePullRequest(input: {pullRequestId: $prId, mergeMethod: $method, commitHeadline: $headline, commitBody: $body}) {
+    pullRequest {
+      merged
+      mergeCommit { oid }
+    }
+  }
+}`
+
+// deleteRefMutation deletes a git ref (the head branch after a merge, best-effort).
+const deleteRefMutation = `
+mutation DeleteRef($refId: ID!) {
+  deleteRef(input: {refId: $refId}) { clientMutationId }
+}`
