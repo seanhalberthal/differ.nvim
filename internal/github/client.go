@@ -26,6 +26,8 @@ type Client struct {
 
 	mu     sync.Mutex
 	viewer string // memoised authenticated login, for list_prs filtering
+
+	cache *cache
 }
 
 // New builds a client. hc is injectable for tests; nil uses a sane default with a
@@ -36,5 +38,9 @@ func New(hc *http.Client, token string, tokenErr error) *Client {
 	if hc == nil {
 		hc = &http.Client{Timeout: 30 * time.Second}
 	}
-	return &Client{http: hc, token: token, tokenErr: tokenErr, restURL: defaultREST, gqlURL: defaultGQL}
+	return &Client{http: hc, token: token, tokenErr: tokenErr, restURL: defaultREST, gqlURL: defaultGQL, cache: newCache()}
 }
+
+// ClearCache flushes the blob and thread caches; the cache_clear method, surfaced as
+// :Dipher cache clear, calls this.
+func (c *Client) ClearCache() { c.cache.clearAll() }

@@ -28,6 +28,7 @@ type mockAPI struct {
 	gotViewed   bool
 	gotMethod   string
 	gotState    string
+	cleared     bool
 	called      bool
 }
 
@@ -126,6 +127,8 @@ func (m *mockAPI) SetPRState(_ context.Context, _, _ string, number int, state s
 	m.gotState = state
 	return &github.SetPRState{State: state}, nil
 }
+
+func (m *mockAPI) ClearCache() { m.cleared = true }
 
 func deps(m *mockAPI) Deps {
 	return Deps{GH: m, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
@@ -433,6 +436,20 @@ func TestSetPRStateRejectsUnknown(t *testing.T) {
 	wantBadRequest(t, err)
 	if m.called {
 		t.Error("GH must not be called for an unknown state")
+	}
+}
+
+func TestCacheClear(t *testing.T) {
+	m := &mockAPI{}
+	res, err := deps(m).cacheClear(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.cleared {
+		t.Error("cache_clear did not flush the backend cache")
+	}
+	if b, _ := json.Marshal(res); string(b) != "{}" {
+		t.Errorf("cache_clear should return {}, got %s", b)
 	}
 }
 

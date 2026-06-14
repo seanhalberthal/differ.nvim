@@ -63,6 +63,7 @@ func NewRegistry(d Deps) Registry {
 		"set_file_viewed":    d.setFileViewed,
 		"merge_pr":           d.mergePR,
 		"set_pr_state":       d.setPRState,
+		"cache_clear":        d.cacheClear,
 	}
 }
 

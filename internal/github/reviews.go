@@ -39,10 +39,15 @@ func (c *Client) SubmitReview(ctx context.Context, reviewID, event, body string)
 	if err := c.graphql(ctx, submitReviewMutation, vars, &out); err != nil {
 		return nil, err
 	}
+	c.cache.invalidateThreads()
 	return &SubmitReview{ID: parseID(out.SubmitPullRequestReview.PullRequestReview.FullDatabaseID)}, nil
 }
 
 // DiscardReview deletes a pending review and its unsubmitted comments.
 func (c *Client) DiscardReview(ctx context.Context, reviewID string) error {
-	return c.graphql(ctx, deleteReviewMutation, map[string]any{"reviewId": reviewID}, nil)
+	if err := c.graphql(ctx, deleteReviewMutation, map[string]any{"reviewId": reviewID}, nil); err != nil {
+		return err
+	}
+	c.cache.invalidateThreads()
+	return nil
 }

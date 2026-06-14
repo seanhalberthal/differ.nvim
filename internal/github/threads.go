@@ -11,6 +11,10 @@ import (
 // id (the reply anchor), ThreadID is the GraphQL node id resolve_thread targets,
 // and IsPending marks an unsubmitted draft (root comment in PENDING state).
 func (c *Client) GetThreads(ctx context.Context, owner, repo string, number int) ([]Thread, error) {
+	key := threadKey(owner, repo, number)
+	if t, ok := c.cache.thread(key); ok {
+		return t, nil
+	}
 	var out []Thread
 	cursor := ""
 	for {
@@ -54,6 +58,7 @@ func (c *Client) GetThreads(ctx context.Context, owner, repo string, number int)
 		}
 		cursor = threads.PageInfo.EndCursor
 	}
+	c.cache.putThreads(key, out)
 	return out, nil
 }
 
@@ -99,6 +104,7 @@ func (c *Client) ResolveThread(ctx context.Context, threadID string, resolved bo
 	if err := c.graphql(ctx, mutation, map[string]any{"threadId": threadID}, &out); err != nil {
 		return nil, err
 	}
+	c.cache.invalidateThreads()
 	return &ResolveThread{Resolved: out.Result.Thread.IsResolved}, nil
 }
 

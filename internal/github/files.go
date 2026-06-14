@@ -44,9 +44,14 @@ func (c *Client) prRefs(ctx context.Context, owner, repo string, number int) (ba
 
 // rawBlob fetches a path's bytes at ref via the Contents API raw media type. a 404
 // means the path is absent at that ref, reported as Missing rather than an error.
+// ref is a commit sha, so the result is immutable and cached forever (§7.5).
 func (c *Client) rawBlob(ctx context.Context, owner, repo, path, ref string) (FileBlob, error) {
 	if c.tokenErr != nil {
 		return FileBlob{}, c.tokenErr
+	}
+	key := blobKey(owner, repo, ref, path)
+	if b, ok := c.cache.blob(key); ok {
+		return b, nil
 	}
 	rawURL := c.restURL + "/repos/" + owner + "/" + repo + "/contents/" + escapePath(path) + "?ref=" + url.QueryEscape(ref)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -63,7 +68,10 @@ func (c *Client) rawBlob(ctx context.Context, owner, repo, path, ref string) (Fi
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return FileBlob{Missing: true}, nil
+		// a missing path at a sha is itself immutable, so cache it too.
+		blob := FileBlob{Missing: true}
+		c.cache.putBlob(key, blob)
+		return blob, nil
 	}
 	body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
 	if perr := mapHTTP(resp, body, nil); perr != nil {
@@ -72,7 +80,9 @@ func (c *Client) rawBlob(ctx context.Context, owner, repo, path, ref string) (Fi
 	if rerr != nil {
 		return FileBlob{}, protocol.NewError(protocol.CodeNetwork, "reading response: "+rerr.Error())
 	}
-	return FileBlob{Content: string(body)}, nil
+	blob := FileBlob{Content: string(body)}
+	c.cache.putBlob(key, blob)
+	return blob, nil
 }
 
 // escapePath percent-escapes each segment of a repo-relative path, keeping the

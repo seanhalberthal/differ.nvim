@@ -11,10 +11,19 @@ import (
 // when ReviewID is set or posting immediately when it isn't. anchor shape (side,
 // line ordering) is validated by the handler before this runs (§7.5).
 func (c *Client) PostComment(ctx context.Context, owner, repo string, number int, in PostCommentInput) (*PostComment, error) {
+	var (
+		res *PostComment
+		err error
+	)
 	if in.InReplyTo != "" {
-		return c.replyToThread(ctx, in)
+		res, err = c.replyToThread(ctx, in)
+	} else {
+		res, err = c.openThread(ctx, owner, repo, number, in)
 	}
-	return c.openThread(ctx, owner, repo, number, in)
+	if err == nil {
+		c.cache.invalidateThreads()
+	}
+	return res, err
 }
 
 func (c *Client) replyToThread(ctx context.Context, in PostCommentInput) (*PostComment, error) {
