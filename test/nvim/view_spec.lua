@@ -135,7 +135,7 @@ describe("view hunk navigation", function()
         v:goto_hunk("next")
         assert.are.equal(9, vim.api.nvim_win_get_cursor(win)[1]) -- second hunk
         v:goto_hunk("next")
-        assert.are.equal(9, vim.api.nvim_win_get_cursor(win)[1]) -- no wrap, stays put
+        assert.are.equal(9, vim.api.nvim_win_get_cursor(win)[1]) -- last hunk, no panel to step into
         v:goto_hunk("prev")
         assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
         v:close()

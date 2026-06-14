@@ -762,6 +762,104 @@ describe(":Dipher diff hunk staging (§8.1)", function()
         p:close()
     end)
 
+    it("S steps to the next file when every hunk is already staged", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "1\n2\n")
+        write(root .. "/z.lua", "z1\nz2\n")
+        git(root, "add", "z.lua")
+        git(root, "commit", "-q", "-am", "two files")
+        write(root .. "/a.lua", "1x\n2\n") -- a.lua: one hunk
+        write(root .. "/z.lua", "z1x\nz2\n") -- z.lua: one hunk
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({ rev = {}, open_first = true })
+        local p = Panel.current()
+        local v = view_in_origin(p)
+        assert.are.equal("a.lua", v.model.path)
+
+        v:stage_all() -- a.lua now fully staged; we stay put
+        assert.are.equal("a.lua", v.model.path)
+        v:stage_all() -- nothing left to stage: step to z.lua
+        assert.are.equal("z.lua", v.model.path)
+        p:close()
+    end)
+
+    it("U steps back a file when nothing is staged", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "1\n2\n")
+        write(root .. "/z.lua", "z1\nz2\n")
+        git(root, "add", "z.lua")
+        git(root, "commit", "-q", "-am", "two files")
+        write(root .. "/a.lua", "1x\n2\n") -- a.lua: one hunk
+        write(root .. "/z.lua", "z1x\nz2\n") -- z.lua: one hunk
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({ rev = {}, open_first = true })
+        local p = Panel.current()
+        local v = view_in_origin(p)
+        v:step_file("next") -- to z.lua (the last file), nothing staged
+        assert.are.equal("z.lua", v.model.path)
+
+        v:unstage_all() -- nothing staged here: step back to a.lua, on its last hunk
+        assert.are.equal("a.lua", v.model.path)
+        assert.is_not_nil(v.columns[1].map.lines[vim.api.nvim_win_get_cursor(p.origin_win)[1]].hunk)
+        p:close()
+    end)
+
+    it("review stepping stops at the list ends, but ]f / [f still wrap", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "1\n2\n")
+        write(root .. "/z.lua", "z1\nz2\n")
+        git(root, "add", "z.lua")
+        git(root, "commit", "-q", "-am", "two files")
+        write(root .. "/a.lua", "1x\n2\n") -- a.lua: one hunk, left unstaged
+        write(root .. "/z.lua", "z1x\nz2\n") -- z.lua: one hunk, left unstaged
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({ rev = {}, open_first = true })
+        local p = Panel.current()
+        local v = view_in_origin(p)
+        assert.are.equal("a.lua", v.model.path)
+
+        -- u / U at the first file with nothing staged: stay put, no wrap to the last
+        v:unstage_hunk()
+        assert.are.equal("a.lua", v.model.path)
+        v:unstage_all()
+        assert.are.equal("a.lua", v.model.path)
+
+        v:step_file("next") -- ]f to z.lua (the last file)
+        assert.are.equal("z.lua", v.model.path)
+        v:step_file("next", false) -- review-style step: no wrap off the last file
+        assert.are.equal("z.lua", v.model.path)
+        v:step_file("next") -- ]f / [f: wraps to the first
+        assert.are.equal("a.lua", v.model.path)
+        p:close()
+    end)
+
+    it("]c / [c flow into the next / previous file at the boundary hunks", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "1\n2\n")
+        write(root .. "/z.lua", "z1\nz2\n")
+        git(root, "add", "z.lua")
+        git(root, "commit", "-q", "-am", "two files")
+        write(root .. "/a.lua", "1x\n2\n") -- a.lua: one hunk
+        write(root .. "/z.lua", "z1x\nz2\n") -- z.lua: one hunk
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({ rev = {}, open_first = true })
+        local p = Panel.current()
+        local v = view_in_origin(p)
+        assert.are.equal("a.lua", v.model.path)
+
+        v:goto_hunk("next") -- past a.lua's only (last) hunk: flow into z.lua
+        assert.are.equal("z.lua", v.model.path)
+        v:goto_hunk("prev") -- before z.lua's only (first) hunk: flow back into a.lua
+        assert.are.equal("a.lua", v.model.path)
+        -- and it lands on a real hunk row in the file it stepped into
+        assert.is_not_nil(v.columns[1].map.lines[vim.api.nvim_win_get_cursor(p.origin_win)[1]].hunk)
+        p:close()
+    end)
+
     it("binds s/u/S/U in the diff window for a worktree source, not a rev-pair", function()
         local root = fresh_repo()
         write(root .. "/a.lua", "local x = 2\nreturn x\n")

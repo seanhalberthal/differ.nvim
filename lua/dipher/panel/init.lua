@@ -393,17 +393,30 @@ function Panel:discard()
     end
 end
 
--- the next/prev file row from `lnum`, wrapping past the ends so file stepping is
--- cyclic (you often open mid-list); nil only when there are no file rows at all
+-- the next/prev file row from `lnum`. wraps past the ends by default so ]f / [f
+-- stepping is cyclic (you often open mid-list); `wrap == false` bounds it instead,
+-- returning nil at the first/last file so the staging review flow stops at the ends.
+-- nil too when there are no file rows at all
 ---@param lnum integer
 ---@param direction "next"|"prev"
+---@param wrap? boolean  -- default true; false stops at the list ends
 ---@return integer|nil
-function Panel:_file_row(lnum, direction)
+function Panel:_file_row(lnum, direction, wrap)
     local n = #self.meta
     if n == 0 then
         return nil
     end
     local step = direction == "prev" and -1 or 1
+    if wrap == false then
+        local i = lnum + step
+        while i >= 1 and i <= n do
+            if self.meta[i] and self.meta[i].kind == "file" then
+                return i
+            end
+            i = i + step
+        end
+        return nil
+    end
     for k = 1, n do
         local i = ((lnum - 1 + step * k) % n) + 1
         local m = self.meta[i]
@@ -414,14 +427,15 @@ function Panel:_file_row(lnum, direction)
     return nil
 end
 
--- ]f / [f: move to the next/prev file row and open it (lockstep file stepping),
--- wrapping at the ends. `keep_focus` is threaded to `_open` so in-view stepping
--- stays in the diff window
+-- ]f / [f: move to the next/prev file row and open it (lockstep file stepping).
+-- wraps at the ends by default; `wrap == false` (the staging review flow) stops at
+-- them. `keep_focus` is threaded to `_open` so in-view stepping stays in the diff window
 ---@param direction "next"|"prev"
 ---@param keep_focus boolean|nil
-function Panel:goto_file(direction, keep_focus)
+---@param wrap? boolean  -- default true; false stops at the list ends
+function Panel:goto_file(direction, keep_focus, wrap)
     local lnum = vim.api.nvim_win_get_cursor(self.winid)[1]
-    local i = self:_file_row(lnum, direction)
+    local i = self:_file_row(lnum, direction, wrap)
     if not i then
         return
     end

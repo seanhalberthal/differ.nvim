@@ -431,13 +431,15 @@ function View:_setup_window(winid, bufnr)
     end
 end
 
--- step the file panel's selection (and re-source this view) without leaving the
--- diff window, the in-view counterpart to the panel's own ]f / [f
+-- step the file panel's selection (and re-source this view) without leaving the diff
+-- window, the in-view counterpart to the panel's own ]f / [f. `wrap` defaults on (for
+-- ]f / [f); the staging review flow passes false so s/S/u/U stop at the list ends
 ---@param direction "next"|"prev"
-function View:step_file(direction)
+---@param wrap? boolean
+function View:step_file(direction, wrap)
     local panel = require("dipher.panel").current()
     if panel and panel:is_open() then
-        panel:goto_file(direction, true) -- keep focus in the diff window
+        panel:goto_file(direction, true, wrap) -- keep focus in the diff window
         return
     end
     -- file history (§8.4): one file, so ]f / [f step commits instead
@@ -485,6 +487,14 @@ function View:goto_hunk(direction)
     end
     if target then
         vim.api.nvim_win_set_cursor(col.winid or win, { target, 0 })
+    elseif direction == "next" then
+        self:step_file("next", false) -- past the last hunk: flow into the next file (no wrap)
+    else
+        local before = self.model.path
+        self:step_file("prev", false) -- before the first hunk: flow into the previous file
+        if self.model.path ~= before then
+            self:_focus_last_hunk() -- land on its last hunk, continuing the backward flow
+        end
     end
 end
 
@@ -638,7 +648,7 @@ function View:_advance_review()
     if target then
         vim.api.nvim_win_set_cursor(win, { target, 0 })
     else
-        self:step_file("next")
+        self:step_file("next", false) -- review flow: stop at the last file, don't wrap
     end
 end
 
@@ -668,7 +678,7 @@ function View:_retreat_review()
         vim.api.nvim_win_set_cursor(win, { target, 0 })
     else
         local before = self.model.path
-        self:step_file("prev")
+        self:step_file("prev", false) -- review flow: stop at the first file, don't wrap
         if self.model.path ~= before then -- only when a previous file actually opened
             self:_focus_last_hunk()
         end
@@ -696,22 +706,36 @@ function View:_toggle_hunk(want_staged)
     end
 end
 
--- S: stage every hunk in the file
+-- S: stage every hunk in the file, or, when they're all staged already (nothing left
+-- to do), step to the next file, the file-level echo of s advancing past the last hunk
 function View:stage_all()
-    self:_toggle_all(true)
+    if not self:_toggle_all(true) and self.can_stage and self.staging then
+        self:step_file("next", false) -- stop at the last file, don't wrap
+    end
 end
 
--- U: unstage every hunk in the file
+-- U: unstage every hunk, or, when none are staged (nothing to do), step back a file
+-- landing on its last hunk, the file-level echo of u retreating past the first hunk
 function View:unstage_all()
-    self:_toggle_all(false)
+    if not self:_toggle_all(false) and self.can_stage and self.staging then
+        local before = self.model.path
+        self:step_file("prev", false) -- stop at the first file, don't wrap
+        if self.model.path ~= before then -- only when a previous file actually opened
+            self:_focus_last_hunk()
+        end
+    end
 end
 
 -- stage / unstage every hunk (§8.1). forward order keeps the running offset correct
--- as the index shifts under each apply; the panel refreshes once after the batch
+-- as the index shifts under each apply; the panel refreshes once after the batch.
+-- returns whether anything changed (false when already wholly in the target state),
+-- so S/U can fall through to file stepping
 ---@param want_staged boolean
+---@return boolean changed
 function View:_toggle_all(want_staged)
     if not (self.can_stage and self.staging) then
-        return vim.notify("dipher: hunk staging isn't available here", vim.log.levels.WARN)
+        vim.notify("dipher: hunk staging isn't available here", vim.log.levels.WARN)
+        return false
     end
     local changed = false
     for i = 1, #self.model.hunks do
@@ -723,12 +747,13 @@ function View:_toggle_all(want_staged)
         self.staging.refresh()
         self:_paint_staged()
     end
+    return changed
 end
 
--- jump-to-file (§8.1, the `de` verb): leave the diff and open the real file on
--- disk at the line under the cursor, mapped to its new-side line (§6.2). the
--- focused diff window is reused for the file and survives; the rest of the
--- session (panel, other columns, synthetic buffers) is torn down around it
+-- jump-to-file (§8.1, the `de` verb): leave the diff and open the real file on disk
+-- at the line under the cursor, mapped to its new-side line (§6.2). the session lives
+-- in its own tabpage (§8.6), so this ends it (dropping that tab) and opens the real
+-- file back in the tab :Dipher was invoked from, where you'll keep working
 function View:jump_to_file()
     local root = self.model.root
     if not root then
