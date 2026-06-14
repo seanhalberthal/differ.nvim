@@ -7,6 +7,7 @@
 local rev = require("dipher.git.rev")
 local patch = require("dipher.git.patch")
 local log = require("dipher.git.log")
+local watch = require("dipher.git.watch")
 
 local M = {}
 
@@ -495,6 +496,7 @@ function M.panel(opts)
 
     local view ---@type dipher.View|nil -- the single diff view the panel drives
     local panel ---@type dipher.Panel|nil -- forward ref so staging can refresh it
+    local watcher ---@type dipher.git.Watcher|nil -- fs watcher, set for worktree panels
 
     -- hunk-level staging (§8.1): plain modifications (status "M", same path both
     -- sides) stage by hunk; a new file (untracked "?" or staged add "A") diffs
@@ -506,20 +508,29 @@ function M.panel(opts)
     -- state (an unstaged diff opens unstaged, a staged one opens staged). the panel
     -- refreshes its counts after each op
     local stageable = is_worktree_status(source)
+    local active_entry ---@type dipher.FileEntry|nil -- the file the view currently shows
 
-    -- a cheap fingerprint of git state (HEAD + porcelain status). external refreshes
-    -- act only when it changed, so a stray TermLeave doesn't re-source over an
-    -- in-progress in-dipher staging session. only meaningful for the worktree source
+    -- a cheap fingerprint of the diff's inputs: HEAD + porcelain status (the index
+    -- side) + the shown file's mtime/size (the worktree side). external refreshes act
+    -- only when it moved, so a stray event doesn't re-source over an in-progress
+    -- in-dipher staging session, and a dipher stage records it so the index write it
+    -- caused doesn't read as outside. content-aware so a worktree edit counts too
     local function git_signature()
         if not stageable then
             return ""
         end
-        return (git({ "rev-parse", "HEAD" }, root) or "")
+        local sig = (git({ "rev-parse", "HEAD" }, root) or "")
             .. "\0"
             .. (git({ "status", "--porcelain=v1", "-z", "-uall" }, root) or "")
+        if active_entry then
+            local st = (vim.uv or vim.loop).fs_stat(root .. "/" .. active_entry.path)
+            if st and st.mtime then
+                sig = sig .. "\0" .. st.mtime.sec .. "." .. st.mtime.nsec .. ":" .. st.size
+            end
+        end
+        return sig
     end
     local last_sig = git_signature()
-    local active_entry ---@type dipher.FileEntry|nil -- the file the view currently shows
 
     local function refresh_panel()
         if panel then
@@ -586,6 +597,10 @@ function M.panel(opts)
             view = require("dipher").diff_model(model, { staging = staging, can_stage = stageable })
         end
         active_entry = entry
+        if watcher then
+            watcher:watch_file(root .. "/" .. entry.path)
+        end
+        last_sig = git_signature() -- record the state we're now showing
         return true
     end
 
@@ -609,30 +624,45 @@ function M.panel(opts)
     -- list, then re-source the open diff so it reflects the new state too rather than
     -- staying frozen. gated on the signature so unrelated terminal events are no-ops
     local function refresh_external()
-        local sig = git_signature()
-        if sig == last_sig then
+        -- a debounced watcher fire (or a queued schedule) can land after the panel is
+        -- gone; bail before touching its deleted buffer
+        if not (panel and panel:is_open()) then
             return
         end
-        last_sig = sig
+        if git_signature() == last_sig then
+            return
+        end
         if panel then
             panel:refresh()
         end
-        if not (view and view:is_open() and active_entry) then
-            return
-        end
-        -- re-target the view to the file's current changes, preferring the side it was
-        -- on; staging the whole file empties that side, so fall back to the other one.
-        -- no candidates means the file is fully clean now, so leave the diff as-is
-        local candidates = entries_for_path(active_entry.path)
-        local pick = candidates[1]
-        for _, e in ipairs(candidates) do
-            if e.staged == active_entry.staged then
-                pick = e
-                break
+        if view and view:is_open() and active_entry then
+            -- re-target the view to the file's current changes, preferring the side it
+            -- was on; staging the whole file empties that side, so fall back to the
+            -- other. show_entry records the signature when it sources
+            local candidates = entries_for_path(active_entry.path)
+            local pick = candidates[1]
+            for _, e in ipairs(candidates) do
+                if e.staged == active_entry.staged then
+                    pick = e
+                    break
+                end
+            end
+            if pick and show_entry(pick) then
+                return
             end
         end
-        if pick then
-            show_entry(pick)
+        -- no view, or the file went fully clean: leave the diff and just record state
+        last_sig = git_signature()
+    end
+
+    -- watch the git dir and the shown file's dir so an external change (lazygit, an
+    -- editor, a commit) re-sources instantly, not just on focus. worktree panels only:
+    -- rev-pair diffs are against immutable SHAs and never go stale
+    if stageable then
+        local git_dir = git({ "rev-parse", "--absolute-git-dir" }, root)
+        git_dir = git_dir and chomp(git_dir) or nil
+        if git_dir then
+            watcher = watch.new({ git_dir = git_dir, on_change = refresh_external })
         end
     end
 
@@ -657,6 +687,9 @@ function M.panel(opts)
             notify(("no changes for %s"):format(entry.path))
         end,
         on_close = function()
+            if watcher then
+                watcher:stop()
+            end
             if view and view:is_open() then
                 view:close()
             end

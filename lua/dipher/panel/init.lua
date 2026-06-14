@@ -335,7 +335,7 @@ end
 -- re-read the model (after a stage op or on focus) and repaint, keeping the cursor
 -- line (clamped). no-op without staging actions (rev-pair panels aren't reloadable)
 function Panel:refresh()
-    if not self.actions then
+    if not self.actions or not self:is_open() then
         return
     end
     local lnum = self.winid and vim.api.nvim_win_get_cursor(self.winid)[1] or 1

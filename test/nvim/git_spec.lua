@@ -207,6 +207,21 @@ describe(":Dipher panel", function()
         end)
     end
 
+    it("refresh after close is a no-op, not a crash on the deleted buffer", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "local x = 2\nreturn x\n")
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({})
+        local p = Panel.current()
+        p:close()
+        -- a debounced watcher / queued autocmd refresh can land after close; it must
+        -- bail rather than render into the wiped buffer
+        assert.has_no.errors(function()
+            p:refresh()
+        end)
+    end)
+
     it("guards a stale entry: selecting a now-clean file refreshes, no blank view", function()
         local root = fresh_repo()
         write(root .. "/a.lua", "local x = 2\nreturn x\n")
@@ -533,6 +548,27 @@ describe(":Dipher diff hunk staging (§8.1)", function()
         end)
 
         assert.are.equal("local x = 99\nreturn x\n", v.model.new_text) -- diff re-sourced
+        p:close()
+    end)
+
+    it("re-sources on a worktree-only edit (no status change) via the signature", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "local x = 2\nreturn x\n") -- a.lua modified
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({ rev = {}, open_first = true })
+        local p = Panel.current()
+        local v = view_in_origin(p)
+
+        -- edit only the worktree (status stays " M"): the content-aware signature still
+        -- moves, so the diff re-sources where the old HEAD+status signature would miss it
+        write(root .. "/a.lua", "local x = 12345\nreturn x\n")
+        vim.api.nvim_exec_autocmds("FocusGained", { group = p.augroup })
+        vim.wait(200, function()
+            return v.model.new_text == "local x = 12345\nreturn x\n"
+        end)
+
+        assert.are.equal("local x = 12345\nreturn x\n", v.model.new_text)
         p:close()
     end)
 
