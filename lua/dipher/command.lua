@@ -96,6 +96,39 @@ function M.gofile()
     require("dipher").jump_to_file()
 end
 
+-- :Dipher sidecar [stop]: smoke-check the Go sidecar (start + hello round trip,
+-- report the binary version), or stop the supervised process
+---@param arg string|nil
+function M.sidecar(arg)
+    local sidecar = require("dipher.sidecar")
+    if arg == "stop" then
+        sidecar.stop()
+        return notify("sidecar stopped")
+    end
+    sidecar.ping(function(err, info)
+        if err then
+            return notify("sidecar: " .. (err.message or err.code), vim.log.levels.ERROR)
+        end
+        notify(
+            ("sidecar ok — binary %s, protocol %d"):format(info.binary or "?", info.protocol or 0)
+        )
+    end)
+end
+
+-- :Dipher cache clear: flush the sidecar's in-process caches (§7.5)
+---@param arg string|nil
+function M.cache(arg)
+    if arg ~= "clear" then
+        return notify("cache: expected 'clear'", vim.log.levels.ERROR)
+    end
+    require("dipher.sidecar").request("cache_clear", nil, function(err)
+        if err then
+            return notify("cache clear: " .. (err.message or err.code), vim.log.levels.ERROR)
+        end
+        notify("sidecar cache cleared")
+    end)
+end
+
 ---@type table<string, fun(arg: string|nil)>
 local SUB = {
     layout = M.layout,
@@ -104,6 +137,8 @@ local SUB = {
     close = M.close,
     gofile = M.gofile,
     log = M.log,
+    sidecar = M.sidecar,
+    cache = M.cache,
 }
 
 -- route `:Dipher ...`. a recognised subcommand (layout/context/panel) takes its
@@ -120,8 +155,13 @@ function M.dispatch(fargs)
 end
 
 ---@type table<string, string[]>
-local VALUES =
-    { layout = { "stacked", "split" }, context = { "full", "+", "-" }, panel = { "set" } }
+local VALUES = {
+    layout = { "stacked", "split" },
+    context = { "full", "+", "-" },
+    panel = { "set" },
+    sidecar = { "stop" },
+    cache = { "clear" },
+}
 -- the nested value set for `:Dipher panel set <pos>`
 local PANEL_SET_VALUES = { "left", "right", "top", "bottom" }
 
