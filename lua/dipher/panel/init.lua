@@ -83,6 +83,8 @@ local STATUS_HL = {
 ---@field file_total integer|nil  -- total files in the change set (fold-independent)
 ---@field augroup integer|nil  -- autocmd group for the external-change refresh
 ---@field win_augroup integer|nil  -- autocmd group for the resize re-fit
+---@field selected_row integer|nil  -- meta row of the last opened file; drives ]f/[f
+---  and the show() cursor while the sidebar is hidden (no window to read from)
 local Panel = {}
 Panel.__index = Panel
 
@@ -466,13 +468,15 @@ end
 -- in the diff window (used by the open-and-show entry so :Dipher lands you in the diff)
 ---@param keep_focus boolean|nil
 function Panel:select(keep_focus)
-    local m = self.meta[vim.api.nvim_win_get_cursor(self.winid)[1]]
+    local lnum = vim.api.nvim_win_get_cursor(self.winid)[1]
+    local m = self.meta[lnum]
     if not m then
         return
     end
     if m.kind == "dir" then
         self:toggle_fold(m.path)
     elseif m.kind == "file" then
+        self.selected_row = lnum
         self:_open(m.entry, keep_focus)
     end
 end
@@ -570,12 +574,19 @@ end
 ---@param keep_focus boolean|nil
 ---@param wrap? boolean  -- default true; false stops at the list ends
 function Panel:goto_file(direction, keep_focus, wrap)
-    local lnum = vim.api.nvim_win_get_cursor(self.winid)[1]
-    local i = self:_file_row(lnum, direction, wrap)
+    -- step from the live cursor when the sidebar is visible, else from the last
+    -- opened row so ]f/[f keeps working with the panel hidden
+    local from = self:is_open() and vim.api.nvim_win_get_cursor(self.winid)[1]
+        or self.selected_row
+        or self:_first_file_line()
+    local i = self:_file_row(from, direction, wrap)
     if not i then
         return
     end
-    vim.api.nvim_win_set_cursor(self.winid, { i, 0 })
+    self.selected_row = i
+    if self:is_open() then
+        vim.api.nvim_win_set_cursor(self.winid, { i, 0 })
+    end
     self:_open(self.meta[i].entry, keep_focus)
 end
 
@@ -866,6 +877,40 @@ function Panel:set_position(position)
     self.origin_win = origin
     self:render()
     self:_restore_cursor(lnum)
+end
+
+-- hide the sidebar window but keep the buffer, folds, selection, and the diff view
+-- it drives alive (the session tab survives), so show() can bring it back
+function Panel:hide()
+    self:_close_window()
+end
+
+-- restore a hidden sidebar: reopen its window from the kept buffer + state, landing
+-- the cursor on the selected file. focusing origin_win first also switches back to
+-- the session tab; mirrors set_position's reopen so origin_win survives
+function Panel:show()
+    if self:is_open() or not vim.api.nvim_buf_is_valid(self.bufnr) then
+        return self
+    end
+    local origin = self.origin_win
+    if origin and vim.api.nvim_win_is_valid(origin) then
+        vim.api.nvim_set_current_win(origin)
+    end
+    self:_open_window()
+    self.origin_win = origin
+    self:render()
+    self:_restore_cursor(self.selected_row or self:_first_file_line())
+    return self
+end
+
+-- hide / show the sidebar in place; the session (tab + diff view) survives either
+-- way. :Dipher close ends the session
+function Panel:toggle()
+    if self:is_open() then
+        self:hide()
+    else
+        self:show()
+    end
 end
 
 -- close the panel window and wipe its buffer. `on_close` (if set) tears down the

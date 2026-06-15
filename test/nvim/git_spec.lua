@@ -107,7 +107,7 @@ describe(":Dipher panel", function()
         return vim.list_slice(p.lines, 4, #p.lines - 3)
     end
 
-    it("opens the default panel as a single Unstaged section and toggles closed", function()
+    it("opens the default panel as a single Unstaged section and toggles the sidebar", function()
         local root = fresh_repo()
         write(root .. "/a.lua", "local x = 2\nreturn x\n") -- modified, not staged
         vim.cmd.edit(root .. "/a.lua")
@@ -120,8 +120,56 @@ describe(":Dipher panel", function()
         -- the +/- counts aren't in the text: they're a right-aligned virt_text extmark
         assert.are.same({ "Unstaged (1)", "M a.lua" }, body(p))
 
-        git_src.panel({}) -- toggle
+        git_src.panel({}) -- toggle hides the sidebar; the session stays alive
+        assert.are.equal(p, Panel.current())
+        assert.is_false(p:is_open())
+
+        -- `panel set` reveals a hidden sidebar at the requested position
+        require("dipher.command").panel("set", "right")
+        assert.are.equal(p, Panel.current())
+        assert.is_true(p:is_open())
+        assert.are.equal("right", p.position)
+
+        git_src.panel({}) -- toggle hides it again
+        assert.is_false(p:is_open())
+
+        git_src.panel({}) -- toggle shows it again, same session
+        assert.are.equal(p, Panel.current())
+        assert.is_true(p:is_open())
+
+        require("dipher.git").close() -- :Dipher close ends the session
         assert.is_nil(Panel.current())
+    end)
+
+    it("steps ]f / [f from the diff while the sidebar is hidden", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "1\n2\n")
+        write(root .. "/z.lua", "z1\nz2\n")
+        git(root, "add", "z.lua")
+        git(root, "commit", "-q", "-am", "two files")
+        write(root .. "/a.lua", "1x\n2\n") -- a.lua modified, unstaged
+        write(root .. "/z.lua", "z1x\nz2\n") -- z.lua modified, unstaged
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({ rev = {}, open_first = true }) -- lands on a.lua (the origin file)
+        local p = Panel.current()
+        assert.are.equal(file_line(p, "a.lua"), p.selected_row)
+
+        git_src.panel({}) -- hide the sidebar; the diff view + session stay alive
+        assert.is_false(p:is_open())
+
+        vim.api.nvim_set_current_win(p.origin_win)
+        local v = require("dipher.view").current()
+        v:step_file("next") -- ]f with no sidebar window to read the cursor from
+        assert.are.equal("z.lua", v.model.path)
+        assert.are.equal(file_line(p, "z.lua"), p.selected_row)
+        assert.is_false(p:is_open()) -- still hidden; stepping didn't reopen it
+
+        v:step_file("prev") -- [f back to a.lua
+        assert.are.equal("a.lua", v.model.path)
+        assert.are.equal(file_line(p, "a.lua"), p.selected_row)
+
+        require("dipher.git").close()
     end)
 
     it("the panel winbar reports the cursor's file position", function()

@@ -450,10 +450,12 @@ end
 ---@return dipher.Panel|nil
 function M.panel(opts)
     local Panel = require("dipher.panel")
-    local open = Panel.current()
-    if open and open:is_open() then
-        open:close()
-        return nil
+    -- a live session (sidebar shown or hidden) toggles the sidebar's visibility in
+    -- place; the diff view + session tab survive. :Dipher close ends the session
+    local existing = Panel.current()
+    if existing then
+        existing:toggle()
+        return existing
     end
 
     -- the file + line :Dipher was invoked from, so open_first can open that file at

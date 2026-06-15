@@ -52,10 +52,12 @@ end
 ---@type table<string, true>
 local PANEL_POSITIONS = { left = true, right = true, top = true, bottom = true }
 
--- :Dipher panel [revspec], open/toggle the file panel (§8.6) over a change set,
--- without auto-selecting a file (bare `:Dipher` is the open-and-show entry).
--- `:Dipher panel set <left|right|top|bottom>` repositions a live panel, or opens
--- one at that position when none is open; height/width carry over from config
+-- :Dipher panel [revspec], open the file panel (§8.6) over a change set without
+-- auto-selecting a file (bare `:Dipher` is the open-and-show entry). on a live
+-- session it hides/shows the sidebar in place; `:Dipher close` ends the session.
+-- `:Dipher panel set <left|right|top|bottom>` repositions a live panel, reveals a
+-- hidden sidebar at that position, or opens one there when no session exists;
+-- height/width carry over from config
 ---@param arg string|nil
 ---@param pos string|nil  -- the position, for the `set` form
 function M.panel(arg, pos)
@@ -68,7 +70,11 @@ function M.panel(arg, pos)
         end
         local panel = require("dipher.panel").current()
         if panel then
-            return panel:set_position(pos)
+            panel:set_position(pos) -- records position; repositions live if shown
+            if not panel:is_open() then
+                panel:show() -- hidden sidebar: reveal it at the new position
+            end
+            return
         end
         return require("dipher.git").panel({ position = pos })
     end

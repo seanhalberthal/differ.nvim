@@ -446,6 +446,12 @@ function View:step_file(direction, wrap)
     local history = require("dipher.history").current()
     if history and history:is_open() then
         history:step(direction, true)
+        return
+    end
+    -- sidebar hidden but the panel session is live: step from internal selection so
+    -- ]f / [f still walk files with no panel window to read the cursor from
+    if panel then
+        panel:goto_file(direction, true, wrap)
     end
 end
 
