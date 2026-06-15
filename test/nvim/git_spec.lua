@@ -786,6 +786,27 @@ describe(":Dipher diff hunk staging (§8.1)", function()
         p:close()
     end)
 
+    it("df on a staged diff unstages the file and re-sources to its worktree view", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "1\n2\n3\n")
+        git(root, "commit", "-q", "-am", "base")
+        write(root .. "/a.lua", "1x\n2\n3\n") -- modify
+        git(root, "add", "a.lua") -- and stage it (fully staged: worktree == index)
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({ rev = {}, open_first = true })
+        local p = Panel.current()
+        local v = view_in_origin(p)
+        assert.are.equal("INDEX", v.model.new_rev) -- opens on the staged HEAD<->index diff
+
+        v:edit_file() -- flow C: unstage + re-source to index<->worktree
+        assert.are.equal("WORKTREE", v.model.new_rev) -- the diff now reflects the worktree
+        assert.is_truthy(v.edit_win) -- and the editable window opened
+        local staged = git(root, "diff", "--cached", "--name-only") or ""
+        assert.is_nil(staged:find("a.lua", 1, true)) -- a.lua is no longer staged
+        p:close()
+    end)
+
     it("reviews hunk-by-hunk: s stages then advances, stepping to the next file", function()
         local root = fresh_repo()
         write(root .. "/a.lua", "1\n2\n3\n4\n5\n6\n7\n8\n")

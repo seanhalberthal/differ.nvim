@@ -24,6 +24,18 @@ local set_wo = require("dipher.util.win").set_local
 ---@type table<integer, dipher.View> -- bufnr -> owning view, for command dispatch
 local by_buf = {}
 
+-- monotonic per-view id, for a stable per-view augroup name (the close guard)
+local view_seq = 0
+local function next_id()
+    view_seq = view_seq + 1
+    return view_seq
+end
+
+-- the most recently laid-out view: only it owns the diff-window-close teardown. there
+-- is one live session at a time, so a superseded view's stale WinClosed (window ids get
+-- recycled) must not tear down a newer session
+local armed_view = nil
+
 ---@class dipher.ViewColumn
 ---@field bufnr integer
 ---@field winid integer|nil
@@ -54,6 +66,12 @@ local by_buf = {}
 ---@field can_stage boolean  -- session-level: bind s/u (worktree-status panels)
 ---@field staging dipher.view.Staging|nil  -- per-source capability (nil off-side)
 ---@field staged_hunks table<integer, boolean>  -- hunk index -> staged, for marking
+---@field on_edit_unstage fun(path: string)|nil  -- frontend hook: unstage + re-source for edit-in-review
+---@field edit_win integer|nil  -- transient editable real-file window (edit-in-review, §8.1)
+---@field id integer  -- per-view id, for the close-guard augroup name
+---@field _suppress_close boolean  -- true while we close a diff window ourselves (relayout/teardown)
+---@field _closing boolean  -- re-entrancy guard once a user close has begun
+---@field _close_group integer|nil  -- augroup id for the WinClosed close guard
 local View = {}
 View.__index = View
 
@@ -66,6 +84,7 @@ View.__index = View
 ---@field keymaps? table
 ---@field staging? dipher.view.Staging
 ---@field can_stage? boolean
+---@field on_edit_unstage? fun(path: string)
 
 -- build a view for a model. buffers and data are created here; windows are not
 -- touched until :open(), so a View can be constructed headlessly for tests
@@ -90,7 +109,11 @@ function View.new(model, opts)
         ),
         can_stage = opts.can_stage or false,
         staging = opts.staging,
+        on_edit_unstage = opts.on_edit_unstage,
         staged_hunks = {},
+        id = next_id(),
+        _suppress_close = false,
+        _closing = false,
     }, View)
     self:_init_staged()
     self:rerender(opts)
@@ -351,13 +374,18 @@ end
 ---@param staging dipher.view.Staging|nil
 ---@param opts? { focus_line?: integer }
 function View:set_source(model, staging, opts)
+    -- a switch to a different file leaves any edit window stale; drop it. a same-file
+    -- re-source (the watcher after a `:w`) keeps it so editing continues uninterrupted
+    if self.edit_win and self.model.path ~= model.path then
+        self:_release_edit_window()
+    end
     self.model = model
     self.staging = staging
     self:_init_staged() -- a new file: reseed staged state from the fresh git read
     self:rerender({ layout = self.layout, context = self.context, deep_diff = self.deep_diff })
     self:_apply_folds() -- new file's ranges; windows unchanged so refold in place
     if opts and opts.focus_line then
-        self:focus_new_line(opts.focus_line) -- hold position across an in-place refresh
+        self:focus_new_line(opts.focus_line, true) -- hold the precise line across a refresh
     else
         self:_focus_first_hunk() -- land on the first unstaged hunk of the new file
     end
@@ -436,6 +464,18 @@ function View:_setup_window(winid, bufnr)
     bind(bufnr, km.less_context, function()
         self:adjust_context(-1)
     end, "dipher: less context")
+    -- go-to-file (§8.1): leave the session and open the real file. available wherever
+    -- the source is file-backed (jump_to_file notifies if not)
+    bind(bufnr, km.goto_file, function()
+        self:jump_to_file()
+    end, "dipher: go to the real file")
+    -- edit-in-review (§8.1): only on an uncommitted diff (worktree or staged), where
+    -- the file on disk is editable. rev-pair / history / PR diffs aren't
+    if self:_editable_source() then
+        bind(bufnr, km.edit_file, function()
+            self:edit_file()
+        end, "dipher: edit the real file")
+    end
     -- next/prev file drive the file panel's (or history's) selection in lockstep,
     -- keeping focus here in the diff window (no-op when neither is open)
     bind(bufnr, km.next_file, function()
@@ -582,6 +622,12 @@ end
 -- with focus_new_line; nil when there's no live new side
 ---@return integer|nil
 function View:cursor_new_line()
+    -- while editing, the live position is in the edit window (the real worktree file,
+    -- which is the new side), so use its line directly; the diff window's own cursor is
+    -- stale there. this makes a post-`:w` re-source focus the line just edited
+    if self.edit_win and vim.api.nvim_win_is_valid(self.edit_win) then
+        return vim.api.nvim_win_get_cursor(self.edit_win)[1]
+    end
     local col = self.columns[#self.columns]
     if not (col and col.winid and vim.api.nvim_win_is_valid(col.winid)) then
         return nil
@@ -590,13 +636,26 @@ function View:cursor_new_line()
     return nav.file_line(col.map, lnum)
 end
 
--- snap to the hunk at or nearest the cursor's new-side line (`new_lnum`, where the
--- cursor was when dipher opened), landing on that hunk's start so you open on the
--- change you were near rather than always the first hunk
+-- position the new side near `new_lnum` (where the cursor was, or the line just
+-- edited) across an in-place re-source. with `exact` (a re-source holding the precise
+-- line), when that line maps to a rendered *changed* line, land on it and centre it so
+-- an edit deep in a hunk shows the edit, not the hunk's top. otherwise (or an
+-- unchanged/context line) fall back to the nearest hunk's start, landing on the change
+-- you were by (this is what open-on-origin wants)
 ---@param new_lnum integer
-function View:focus_new_line(new_lnum)
+---@param exact? boolean
+function View:focus_new_line(new_lnum, exact)
     local col = self.columns[#self.columns] -- the new side: the unified col, or right in split
     if not (col and col.winid and vim.api.nvim_win_is_valid(col.winid)) then
+        return
+    end
+    -- the line maps straight to a rendered changed line (e.g. the line just edited)
+    local at = col.map.from_new[new_lnum]
+    if exact and at and col.map.lines[at] and col.map.lines[at].hunk then
+        pcall(vim.api.nvim_win_set_cursor, col.winid, { at, 0 })
+        pcall(vim.api.nvim_win_call, col.winid, function()
+            vim.cmd("normal! zz")
+        end)
         return
     end
     local hunks = self.model.hunks
@@ -852,6 +911,160 @@ function View:jump_to_file()
     end
 end
 
+-- whether the new side is a live working-tree state (worktree or index), so the file
+-- on disk is the editable target. excludes committed sources (rev↔rev, history, PR),
+-- whose new side is a sha the worktree file doesn't correspond to
+---@return boolean
+function View:_editable_source()
+    return self.model.new_rev == "WORKTREE" or self.model.new_rev == "INDEX"
+end
+
+-- edit-in-review (§8.1): pop the real working-tree file into a transient editable
+-- window at the cursor's mapped new-side line, keeping the session. unlike
+-- jump_to_file this never tears down the diff: you edit, `:w`, and the worktree
+-- watcher re-sources the diff in place (cursor held near its hunk). the projection
+-- buffer and line map are untouched (invariant 2); you edit the real file's own
+-- buffer, so LSP / treesitter / undo all work natively. a staged diff (index↔ side)
+-- can't be edited in place (you can't edit the index), so the file is unstaged first:
+-- the staged change returns to the worktree and the watcher re-sources to the now-
+-- unstaged diff, where the edit shows. git-correct; re-stage (s) when done
+function View:edit_file()
+    if not self:_editable_source() then
+        return vim.notify(
+            "dipher: editing applies to uncommitted (worktree/staged) changes only",
+            vim.log.levels.WARN
+        )
+    end
+    local root = self.model.root
+    if not root then
+        return vim.notify("dipher: editing needs a file-backed source", vim.log.levels.WARN)
+    end
+    local abs = root .. "/" .. self.model.path
+    if vim.fn.filereadable(abs) == 0 then
+        -- e.g. a pure deletion: no new-side file on disk to edit
+        return vim.notify(
+            ("dipher: %s is not on disk"):format(self.model.path),
+            vim.log.levels.WARN
+        )
+    end
+
+    local col = self:_focused_column()
+    local win = (col.winid and vim.api.nvim_win_is_valid(col.winid)) and col.winid
+        or vim.api.nvim_get_current_win()
+    local target = nav.file_line(col.map, vim.api.nvim_win_get_cursor(win)[1]) -- §6.2
+
+    -- staged diff: unstage the file and re-source to its unstaged index↔worktree view
+    -- so the edit lands on a diff that reflects it. driven explicitly (the watcher's
+    -- re-source is suppressed by the staging signature); falls back to an in-place
+    -- unstage if no frontend hook is wired
+    if self.model.new_rev == "INDEX" then
+        if self.on_edit_unstage then
+            self.on_edit_unstage(self.model.path)
+        elseif self.can_stage and self.staging then
+            self:_toggle_all(false)
+        end
+    end
+
+    self:_open_edit_window(abs, target, col.winid)
+end
+
+-- open (or reuse) the edit window and load `abs` at `target`. split off the diff
+-- window so the diff stays visible and live-updates beside the edit; a WinClosed
+-- hook keeps `edit_win` in sync when the user closes it natively (`:q`)
+---@param abs string
+---@param target integer|nil
+---@param anchor_win integer|nil  -- a diff window to split from
+function View:_open_edit_window(abs, target, anchor_win)
+    if self.edit_win and vim.api.nvim_win_is_valid(self.edit_win) then
+        vim.api.nvim_set_current_win(self.edit_win)
+    else
+        -- split from the diff window, not the panel (`:Dipher edit` runs with the
+        -- panel focused), so the new window lands beside the diff
+        if anchor_win and vim.api.nvim_win_is_valid(anchor_win) then
+            vim.api.nvim_set_current_win(anchor_win)
+        end
+        vim.cmd("rightbelow split")
+        local win = vim.api.nvim_get_current_win()
+        self.edit_win = win
+        vim.api.nvim_create_autocmd("WinClosed", {
+            pattern = tostring(win),
+            once = true,
+            callback = function()
+                if self.edit_win == win then
+                    self.edit_win = nil
+                end
+            end,
+        })
+    end
+    vim.cmd.edit(vim.fn.fnameescape(abs))
+    if target then
+        pcall(vim.api.nvim_win_set_cursor, 0, { target, 0 })
+        vim.cmd("normal! zz")
+    end
+end
+
+-- drop the edit window without losing work: a window holding unsaved edits is left
+-- open (it's a normal file window, harmless to keep), otherwise it's closed. either
+-- way `edit_win` is cleared. called on a file switch (stale window) and on teardown
+function View:_release_edit_window()
+    local win = self.edit_win
+    self.edit_win = nil
+    if not (win and vim.api.nvim_win_is_valid(win)) then
+        return
+    end
+    local buf = vim.api.nvim_win_get_buf(win)
+    if vim.bo[buf].modified then
+        return -- keep the user's unsaved real-file window
+    end
+    pcall(vim.api.nvim_win_close, win, false)
+end
+
+-- the diff window is the session anchor: closing one of its columns ends the whole
+-- session, so there's never a live state without a diff window. (re)arm a WinClosed
+-- guard on each column window; re-armed after every relayout since winids change
+function View:_arm_close_guard()
+    armed_view = self -- this view now owns the close-teardown; supersede any prior one
+    self._close_group =
+        vim.api.nvim_create_augroup("dipher.viewclose." .. self.id, { clear = true })
+    for _, col in ipairs(self.columns) do
+        if col.winid and vim.api.nvim_win_is_valid(col.winid) then
+            vim.api.nvim_create_autocmd("WinClosed", {
+                group = self._close_group,
+                pattern = tostring(col.winid),
+                callback = function()
+                    self:_on_diff_window_closed()
+                end,
+            })
+        end
+    end
+end
+
+-- a diff column window was closed. ignore our own programmatic closes (layout toggle,
+-- teardown) and re-entrancy; otherwise tear down the whole session via its owner
+-- (panel / history), or just this view when it's a bare diff. deferred because window
+-- changes (closing the panel, the session tab) aren't allowed inside WinClosed
+function View:_on_diff_window_closed()
+    -- only the current session's view tears down (a recycled winid can fire a stale
+    -- view's guard); ignore our own programmatic closes and re-entrancy
+    if self ~= armed_view or self._suppress_close or self._closing then
+        return
+    end
+    self._closing = true
+    vim.schedule(function()
+        -- re-check at run time: a newer session may have armed, or this view may have
+        -- been torn down another way, between the close and this deferred callback
+        if self ~= armed_view or #self.columns == 0 then
+            return
+        end
+        local owner = require("dipher.panel").current() or require("dipher.history").current()
+        if owner then
+            owner:close() -- on_close cascades to this view + the session tab
+        else
+            self:close()
+        end
+    end)
+end
+
 -- lay the columns into windows. the first column anchors on its existing window
 -- (or the current one on first open); extra columns reuse their window or vsplit
 -- a fresh one; >1 column scroll-binds. single authority for open + layout toggle
@@ -881,6 +1094,8 @@ function View:_relayout()
         vim.cmd("syncbind")
     end
     self:_apply_folds() -- windows now exist; collapse the unchanged regions
+    self:_paint_cursorline() -- windows now exist; show the cursor line over the bg
+    self:_arm_close_guard() -- re-arm now the winids are current
 end
 
 -- open the view: stacked takes the current window, split adds a scroll-bound pane
@@ -904,7 +1119,10 @@ function View:_discard(col, keep_win)
     by_buf[col.bufnr] = nil
     statuscolumn.clear(col.bufnr)
     if col.winid and col.winid ~= keep_win and vim.api.nvim_win_is_valid(col.winid) then
+        -- our own close: don't let the WinClosed guard mistake it for a user close
+        self._suppress_close = true
         pcall(vim.api.nvim_win_close, col.winid, true)
+        self._suppress_close = false
     end
     if vim.api.nvim_buf_is_valid(col.bufnr) then
         vim.api.nvim_buf_delete(col.bufnr, { force = true })
@@ -915,6 +1133,15 @@ end
 -- one window open (jump-to-file, which has already loaded the real file into it)
 ---@param keep_win integer|nil
 function View:close(keep_win)
+    self._closing = true -- block the WinClosed guard for the duration of teardown
+    if armed_view == self then
+        armed_view = nil
+    end
+    if self._close_group then
+        pcall(vim.api.nvim_del_augroup_by_id, self._close_group)
+        self._close_group = nil
+    end
+    self:_release_edit_window() -- drop any edit-in-review window (keeps it if unsaved)
     for _, col in ipairs(self.columns) do
         self:_discard(col, keep_win)
     end

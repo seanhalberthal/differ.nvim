@@ -73,6 +73,8 @@ M.defaults = {
         unstage_all = "U",
         more_context = "d=", -- diff
         less_context = "d-",
+        edit_file = "df", -- diff: edit-in-review, uncommitted (worktree/staged) diffs (§8.1)
+        goto_file = "de", -- diff: open the real file and end the session (§8.1)
         discard = "X", -- panel
         refresh = "R",
         toggle_fold = "za", -- history (range mode)

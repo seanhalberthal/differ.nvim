@@ -32,8 +32,15 @@ end
 -- open a View from an already-built DiffModel. the git frontend and panel use
 -- this; `opts` overrides the layout/context defaults and carries the hunk-staging
 -- capability (§8.1) for worktree-status panels
+---@class dipher.DiffModelOpts
+---@field layout? dipher.Layout
+---@field context? integer
+---@field staging? dipher.view.Staging
+---@field can_stage? boolean
+---@field on_edit_unstage? fun(path: string)
+
 ---@param model dipher.DiffModel
----@param opts { layout?: dipher.Layout, context?: integer, staging?: dipher.view.Staging, can_stage?: boolean }|nil
+---@param opts? dipher.DiffModelOpts
 ---@return dipher.View
 function M.diff_model(model, opts)
     require("dipher.ui.highlights").setup()
@@ -49,6 +56,7 @@ function M.diff_model(model, opts)
             keymaps = cfg.keymaps.diff,
             staging = opts.staging,
             can_stage = opts.can_stage,
+            on_edit_unstage = opts.on_edit_unstage,
         })
         :open()
 end
@@ -86,7 +94,9 @@ end
 ---@param opts table|nil
 ---@return dipher.Panel|nil
 function M.panel(opts)
-    return require("dipher.git").panel(opts or {})
+    -- always show a file: the diff window is the session anchor (§8.1), so a panel
+    -- never opens without one
+    return require("dipher.git").panel(vim.tbl_extend("keep", { open_first = true }, opts or {}))
 end
 
 -- open single-file history (§8.4, the `dh` keymap): a commit-list panel over the
@@ -150,6 +160,18 @@ function M.jump_to_file()
         return vim.notify("dipher: no diff view here", vim.log.levels.WARN)
     end
     view:jump_to_file()
+end
+
+-- edit-in-review (§8.1, the `de` keymap): open the real worktree file in a transient
+-- editable window at the mapped line, keeping the session; `:w` re-sources the diff.
+-- works from the panel too (acts on the driven view); a no-op with a notice when no
+-- diff is active
+function M.edit_file()
+    local view = M.active_view()
+    if not view then
+        return vim.notify("dipher: no diff view here", vim.log.levels.WARN)
+    end
+    view:edit_file()
 end
 
 -- ]c / [c from the panel: move the driven diff view to the next/previous hunk

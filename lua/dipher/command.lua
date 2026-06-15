@@ -52,12 +52,12 @@ end
 ---@type table<string, true>
 local PANEL_POSITIONS = { left = true, right = true, top = true, bottom = true }
 
--- :Dipher panel [revspec], open the file panel (§8.6) over a change set without
--- auto-selecting a file (bare `:Dipher` is the open-and-show entry). on a live
--- session it hides/shows the sidebar in place; `:Dipher close` ends the session.
--- `:Dipher panel set <left|right|top|bottom>` repositions a live panel, reveals a
--- hidden sidebar at that position, or opens one there when no session exists;
--- height/width carry over from config
+-- :Dipher panel [revspec], open the file panel (§8.6) over a change set and show
+-- the first file's diff (the diff window is the session anchor, so there's never a
+-- panel without one). on a live session it hides/shows the sidebar in place;
+-- `:Dipher close` ends the session. `:Dipher panel set <left|right|top|bottom>`
+-- repositions a live panel, reveals a hidden sidebar at that position, or opens one
+-- there when no session exists; height/width carry over from config
 ---@param arg string|nil
 ---@param pos string|nil  -- the position, for the `set` form
 function M.panel(arg, pos)
@@ -76,9 +76,9 @@ function M.panel(arg, pos)
             end
             return
         end
-        return require("dipher.git").panel({ position = pos })
+        return require("dipher.git").panel({ position = pos, open_first = true })
     end
-    require("dipher.git").panel({ rev = (arg ~= "" and arg) or nil })
+    require("dipher.git").panel({ rev = (arg ~= "" and arg) or nil, open_first = true })
 end
 
 -- :Dipher pr [number|owner/repo#number|list [filter]] (§8.2). no arg or a bare
@@ -130,6 +130,12 @@ function M.gofile()
     require("dipher").jump_to_file()
 end
 
+-- :Dipher edit: edit-in-review (§8.1) — open the real worktree file in a transient
+-- editable window at the cursor's mapped line, keeping the diff session live
+function M.edit()
+    require("dipher").edit_file()
+end
+
 -- :Dipher sidecar [stop]: smoke-check the Go sidecar (start + hello round trip,
 -- report the binary version), or stop the supervised process
 ---@param arg string|nil
@@ -171,6 +177,7 @@ local SUB = {
     pr = M.pr,
     close = M.close,
     gofile = M.gofile,
+    edit = M.edit,
     log = M.log,
     sidecar = M.sidecar,
     cache = M.cache,

@@ -438,13 +438,30 @@ describe("view re-source", function()
         v:set_source(model(old, new))
         assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
 
-        -- park on the second hunk, capture its new-side line, re-source preserving it:
-        -- the cursor holds on the second hunk (row 9) rather than snapping back to row 2
+        -- park on the second hunk's new line, capture it, re-source preserving it: the
+        -- cursor holds on that exact line (row 10, the "H"), not the hunk's top (row 9)
         vim.api.nvim_win_set_cursor(win, { 10, 0 })
         local line = v:cursor_new_line()
         assert.are.equal(8, line) -- the new-side line under the cursor ("H")
         v:set_source(model(old, new), nil, { focus_line = line })
-        assert.are.equal(9, vim.api.nvim_win_get_cursor(win)[1])
+        assert.are.equal(10, vim.api.nvim_win_get_cursor(win)[1]) -- exact line, not row 9
+        v:close()
+    end)
+
+    it("focuses the exact changed line on re-source, not the hunk's top", function()
+        -- one multi-line hunk: new-side lines 2,3,4 (B,C,D) all changed
+        local old, new = "a\nb\nc\nd\ne\n", "a\nB\nC\nD\ne\n"
+        local v = View.new(model(old, new), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local col = v.columns[1]
+        v:focus_new_line(4, true) -- the "D" line, deep in the hunk
+        local cur = vim.api.nvim_win_get_cursor(col.winid)[1]
+        assert.are.equal(col.map.from_new[4], cur) -- landed on D's row exactly
+        assert.is_true(cur > col.map.from_new[2]) -- below the top of the new block
         v:close()
     end)
 end)
@@ -501,6 +518,278 @@ describe("view jump-to-file", function()
     end)
 end)
 
+describe("view edit-in-review", function()
+    local function write(dir, name, text)
+        vim.fn.mkdir(dir, "p")
+        local fd = assert(io.open(dir .. "/" .. name, "w"))
+        fd:write(text)
+        fd:close()
+    end
+
+    local function worktree_model(dir, path, old, new)
+        return diff.build({
+            path = path,
+            old_rev = "HEAD",
+            new_rev = "WORKTREE",
+            old_text = old,
+            new_text = new,
+            root = dir,
+        })
+    end
+
+    it("opens the real file in a kept-alive window at the mapped line", function()
+        vim.cmd("silent! only")
+        local dir = vim.fn.tempname()
+        write(dir, "f.txt", "a\nB\nc\n")
+        local v = View.new(worktree_model(dir, "f.txt", "a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local diff_buf, diff_win = v.columns[1].bufnr, v.columns[1].winid
+        vim.api.nvim_win_set_cursor(diff_win, { 3, 0 }) -- the added "B" (new-side line 2)
+        v:edit_file()
+
+        assert.is_truthy(v.edit_win)
+        assert.is_true(vim.api.nvim_win_is_valid(v.edit_win))
+        assert.are_not.equal(diff_win, v.edit_win) -- a separate window, not the diff's
+        local cur = vim.api.nvim_get_current_buf()
+        assert.are.equal("f.txt", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(cur), ":t"))
+        assert.are.equal("", vim.bo[cur].buftype) -- the real file, editable
+        assert.are.equal(2, vim.api.nvim_win_get_cursor(0)[1]) -- mapped to the new side
+        assert.is_true(vim.api.nvim_buf_is_valid(diff_buf)) -- session kept: diff still alive
+        v:close()
+    end)
+
+    it("drives the unstage hook for a staged source (flow C)", function()
+        vim.cmd("silent! only")
+        local dir = vim.fn.tempname()
+        write(dir, "f.txt", "a\nB\nc\n")
+        local hook_path, applied
+        local m = diff.build({
+            path = "f.txt",
+            old_rev = "HEAD",
+            new_rev = "INDEX",
+            old_text = "a\nb\nc\n",
+            new_text = "a\nB\nc\n",
+            root = dir,
+        })
+        local v = View.new(m, {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+            can_stage = true,
+            staging = {
+                initial = "staged",
+                apply = function()
+                    applied = true
+                    return true
+                end,
+                refresh = function() end,
+            },
+            on_edit_unstage = function(path)
+                hook_path = path
+            end,
+        })
+        v:open()
+        v:edit_file()
+        assert.are.equal("f.txt", hook_path) -- the frontend hook ran with the path
+        assert.is_nil(applied) -- the hook supersedes the in-place unstage
+        assert.is_truthy(v.edit_win) -- and the editor opened
+        v:close()
+    end)
+
+    it("falls back to an in-place unstage when no hook is wired", function()
+        vim.cmd("silent! only")
+        local dir = vim.fn.tempname()
+        write(dir, "f.txt", "a\nB\nc\n")
+        local reversed = {}
+        local m = diff.build({
+            path = "f.txt",
+            old_rev = "HEAD",
+            new_rev = "INDEX",
+            old_text = "a\nb\nc\n",
+            new_text = "a\nB\nc\n",
+            root = dir,
+        })
+        local v = View.new(m, {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+            can_stage = true,
+            staging = {
+                initial = "staged",
+                apply = function(_, _, _, reverse)
+                    reversed[#reversed + 1] = reverse
+                    return true
+                end,
+                refresh = function() end,
+            },
+        })
+        v:open()
+        v:edit_file()
+        assert.are.same({ true }, reversed) -- the hunk was unstaged (reverse=true)
+        assert.is_truthy(v.edit_win)
+        v:close()
+    end)
+
+    it("also edits a staged (index) source", function()
+        vim.cmd("silent! only")
+        local dir = vim.fn.tempname()
+        write(dir, "f.txt", "a\nB\nc\n")
+        -- a staged diff is HEAD<->INDEX; the file on disk is still editable
+        local m = diff.build({
+            path = "f.txt",
+            old_rev = "HEAD",
+            new_rev = "INDEX",
+            old_text = "a\nb\nc\n",
+            new_text = "a\nB\nc\n",
+            root = dir,
+        })
+        local v =
+            View.new(m, { layout = "stacked", context = math.huge, deep_diff = { enabled = true } })
+        v:open()
+        v:edit_file()
+        assert.is_truthy(v.edit_win)
+        local cur = vim.api.nvim_get_current_buf()
+        assert.are.equal("f.txt", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(cur), ":t"))
+        v:close()
+    end)
+
+    it("declines on a committed (rev) source", function()
+        vim.cmd("silent! only")
+        local dir = vim.fn.tempname()
+        write(dir, "f.txt", "a\nB\nc\n")
+        -- new side is a rev (B), not the file on disk, so editing must not open anything
+        local m = diff.build({
+            path = "f.txt",
+            old_rev = "A",
+            new_rev = "B",
+            old_text = "a\nb\nc\n",
+            new_text = "a\nB\nc\n",
+            root = dir,
+        })
+        local v =
+            View.new(m, { layout = "stacked", context = math.huge, deep_diff = { enabled = true } })
+        v:open()
+        local diff_buf = v.columns[1].bufnr
+        v:edit_file()
+        assert.is_nil(v.edit_win)
+        assert.are.equal(diff_buf, vim.api.nvim_get_current_buf()) -- still on the diff
+        v:close()
+    end)
+
+    it("releases an unsaved-free edit window when a different file is sourced", function()
+        vim.cmd("silent! only")
+        local dir = vim.fn.tempname()
+        write(dir, "f.txt", "a\nB\nc\n")
+        write(dir, "g.txt", "x\nY\nz\n")
+        local v = View.new(worktree_model(dir, "f.txt", "a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        v:edit_file()
+        local edit_win = v.edit_win
+        assert.is_true(vim.api.nvim_win_is_valid(edit_win))
+
+        v:set_source(worktree_model(dir, "g.txt", "x\ny\nz\n", "x\nY\nz\n"))
+        assert.is_nil(v.edit_win) -- a file switch drops the stale edit window
+        assert.is_false(vim.api.nvim_win_is_valid(edit_win))
+        v:close()
+    end)
+end)
+
+describe("view cursor-line overlay", function()
+    local cursor_ns = vim.api.nvim_create_namespace("dipher.cursorline")
+
+    local function overlay_rows(buf)
+        local rows = {}
+        for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, cursor_ns, 0, -1, { details = true })) do
+            if m[4].hl_group == "dipherCursorLine" then
+                rows[#rows + 1] = m[2]
+            end
+        end
+        return rows
+    end
+
+    it("paints one overlay on the cursor row and follows the cursor", function()
+        vim.cmd("silent! only")
+        local v = View.new(model("a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local buf, win = v.columns[1].bufnr, v.columns[1].winid
+        -- exactly one overlay, on the row the cursor opened at
+        local cur = vim.api.nvim_win_get_cursor(win)[1] - 1
+        assert.are.same({ cur }, overlay_rows(buf))
+
+        vim.api.nvim_win_set_cursor(win, { 1, 0 })
+        vim.api.nvim_exec_autocmds("CursorMoved", { buffer = buf })
+        assert.are.same({ 0 }, overlay_rows(buf)) -- moved with the cursor
+        v:close()
+    end)
+
+    it("keeps the overlay only in the focused column in split", function()
+        vim.cmd("silent! only")
+        local v = View.new(model("a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "split",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local left, right = v.columns[1], v.columns[2]
+        -- focus opens on the first column; the off-side column carries no overlay
+        assert.are.equal(1, #overlay_rows(left.bufnr))
+        assert.are.equal(0, #overlay_rows(right.bufnr))
+        v:close()
+    end)
+end)
+
+describe("view close guard", function()
+    local function two_windows()
+        vim.cmd("silent! only")
+        vim.cmd("new") -- a second window so the diff window is never the last one
+    end
+
+    it("tears the bare view down when its diff window is closed", function()
+        two_windows()
+        local v = View.new(model("a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local buf, win = v.columns[1].bufnr, v.columns[1].winid
+        vim.api.nvim_win_close(win, true) -- a user :q on the diff window
+        vim.wait(500, function()
+            return not vim.api.nvim_buf_is_valid(buf)
+        end)
+        assert.is_false(vim.api.nvim_buf_is_valid(buf)) -- the whole view tore down
+        assert.are.equal(0, #v.columns)
+    end)
+
+    it("survives a layout toggle that closes one of its own windows", function()
+        two_windows()
+        local v = View.new(model("a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "split",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        assert.are.equal(2, #v.columns)
+        v:toggle_layout() -- split -> stacked: closes the second column's window
+        vim.wait(100) -- give any (wrongly) scheduled teardown a chance to fire
+        assert.are.equal(1, #v.columns) -- still alive, just one column now
+        assert.is_true(vim.api.nvim_buf_is_valid(v.columns[1].bufnr))
+        v:close()
+    end)
+end)
+
 describe("command router", function()
     local command = require("dipher.command")
 
@@ -526,10 +815,18 @@ describe("command router", function()
     it("completes subcommands and values", function()
         local subs = command.complete("", "Dipher ")
         table.sort(subs)
-        assert.are.same(
-            { "cache", "close", "context", "gofile", "layout", "log", "panel", "pr", "sidecar" },
-            subs
-        )
+        assert.are.same({
+            "cache",
+            "close",
+            "context",
+            "edit",
+            "gofile",
+            "layout",
+            "log",
+            "panel",
+            "pr",
+            "sidecar",
+        }, subs)
         assert.are.same(
             { "split", "stacked" },
             (function()

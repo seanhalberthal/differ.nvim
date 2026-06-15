@@ -39,6 +39,20 @@ describe("command completion", function()
     end)
 end)
 
+describe("command panel", function()
+    it("always opens with a file shown (open_first), so there's a diff window", function()
+        local git = require("dipher.git")
+        local saved = git.panel
+        local got
+        git.panel = function(opts)
+            got = opts
+        end
+        command.panel("")
+        git.panel = saved
+        assert.is_true(got.open_first)
+    end)
+end)
+
 describe("command panel set", function()
     it("repositions the live panel", function()
         local p = open_panel()
@@ -58,7 +72,8 @@ describe("command panel set", function()
         end
         command.panel("set", "top")
         git.panel = saved
-        assert.are.same({ position = "top" }, got)
+        -- open_first so a fresh panel always shows a diff (the session anchor, §8.1)
+        assert.are.same({ position = "top", open_first = true }, got)
     end)
 
     it("ignores an unknown position", function()

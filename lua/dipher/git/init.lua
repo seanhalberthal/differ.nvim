@@ -538,6 +538,7 @@ function M.panel(opts)
     local view ---@type dipher.View|nil -- the single diff view the panel drives
     local panel ---@type dipher.Panel|nil -- forward ref so staging can refresh it
     local watcher ---@type dipher.git.Watcher|nil -- fs watcher, set for worktree panels
+    local on_edit_unstage ---@type fun(path: string)|nil -- assigned below; passed to the view
 
     -- hunk-level staging (§8.1): plain modifications (status "M", same path both
     -- sides) stage by hunk; a new file (untracked "?" or staged add "A") diffs
@@ -638,7 +639,11 @@ function M.panel(opts)
         if view and view:is_open() then
             view:set_source(model, staging, focus_line and { focus_line = focus_line } or nil)
         else
-            view = require("dipher").diff_model(model, { staging = staging, can_stage = stageable })
+            view = require("dipher").diff_model(model, {
+                staging = staging,
+                can_stage = stageable,
+                on_edit_unstage = on_edit_unstage,
+            })
         end
         active_entry = entry
         if watcher then
@@ -662,6 +667,22 @@ function M.panel(opts)
             end
         end
         return out
+    end
+
+    -- edit-in-review on a staged diff (§8.1, flow C): unstage the whole file so the
+    -- staged change returns to the worktree, then re-source the diff to the file's now-
+    -- unstaged view so the edit lands somewhere the diff reflects. driven explicitly by
+    -- the view (not the watcher, whose re-source is suppressed by the staging signature)
+    ---@param path string
+    on_edit_unstage = function(path)
+        M.unstage(root, path)
+        refresh_panel() -- the file moves to the Unstaged section; records last_sig
+        for _, e in ipairs(entries_for_path(path)) do
+            if not e.staged then
+                show_entry(e) -- switch the diff to index↔worktree, updating active_entry
+                return
+            end
+        end
     end
 
     -- after an external git change (lazygit, a tmux-pane commit, `:!git`): refresh the
