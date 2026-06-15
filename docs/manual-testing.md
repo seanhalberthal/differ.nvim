@@ -76,3 +76,20 @@ mutate:
    coverage list through the real UX
 3. swap to the dummy's token to exercise the author-only and counterpart actions the
    main account can't perform on its own PRs
+
+### slice 1 — picker + file navigation
+
+from inside the test repo's worktree:
+
+- `:Dipher pr` lists the open PRs in the picker, each row `#<n> <title> · @<author>
+  <relative time>`, drafts marked `[draft]`; selecting one opens the session tab
+- `:Dipher pr <n>` skips the picker and opens that PR directly
+- `:Dipher pr <owner>/<repo>#<n>` targets a fork / another repo (the §1 override)
+- the panel lists the PR's files with a `[x]`/`[ ]` viewed column (viewed files
+  dimmed); the first file auto-opens in the diff with base/head as the rev labels
+- added file → base side empty; deleted file → head side empty; modified → both
+- `]f`/`[f` step files, re-sourcing the one diff in place (no new windows); revisits
+  are instant (the per-session blob memo)
+- `:Dipher close` tears the session down and returns to the invoking tab
+- error paths surface one notification: no token (`gh auth login`), no gh
+  (`install gh or set GH_TOKEN`), a non-github remote (`not a github remote`)

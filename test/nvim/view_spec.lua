@@ -527,7 +527,7 @@ describe("command router", function()
         local subs = command.complete("", "Dipher ")
         table.sort(subs)
         assert.are.same(
-            { "cache", "close", "context", "gofile", "layout", "log", "panel", "sidecar" },
+            { "cache", "close", "context", "gofile", "layout", "log", "panel", "pr", "sidecar" },
             subs
         )
         assert.are.same(

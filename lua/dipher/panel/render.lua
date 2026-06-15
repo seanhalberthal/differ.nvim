@@ -25,6 +25,8 @@ local FOLD_OPEN, FOLD_CLOSED = "▾", "▸"
 ---@field icon_hl string|nil      -- devicon highlight group
 ---@field context_col integer|nil -- byte range of the dimmed "·parent/" trailer (name listing)
 ---@field context_end integer|nil
+---@field viewed_col integer|nil  -- byte range of the PR viewed-checkbox glyph (PR sections only)
+---@field viewed_end integer|nil
 ---@field prefix_col integer|nil  -- header rows: byte col where the dimmed common-prefix subtitle begins
 ---@field prefix_end integer|nil
 
@@ -108,15 +110,26 @@ function M.lines(blocks, header, icon_for, footer, width)
                 }
             else
                 local e = row.entry
-                local prefix = indent .. e.status .. " "
+                -- viewed-checkbox column (§8.2/§8.6), PR sections only: gated on the
+                -- entry carrying a `viewed` boolean, so local entries (viewed == nil)
+                -- leave the column off and the local panel is untouched
+                local checkbox = ""
+                if e.viewed ~= nil then
+                    checkbox = (e.viewed and "[x]" or "[ ]") .. " "
+                end
+                local prefix = indent .. checkbox .. e.status .. " "
                 local m = {
                     kind = "file",
                     entry = e,
                     path = row.path,
                     status = e.status,
                     depth = row.depth,
-                    status_col = #indent,
+                    status_col = #indent + #checkbox,
                 }
+                if checkbox ~= "" then
+                    m.viewed_col = #indent
+                    m.viewed_end = #indent + #checkbox - 1 -- the glyph, less the trailing space
+                end
                 if icon_for then
                     local glyph, hl = icon_for(e.path)
                     if glyph and glyph ~= "" then

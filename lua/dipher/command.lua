@@ -75,6 +75,34 @@ function M.panel(arg, pos)
     require("dipher.git").panel({ rev = (arg ~= "" and arg) or nil })
 end
 
+-- :Dipher pr [number|owner/repo#number|list [filter]] (§8.2). no arg or a bare
+-- number opens the picker / that PR; `owner/repo#number` targets a specific repo
+-- (forks, §1); `list [filter]` opens the picker with a filter. the review/submit/…
+-- sub-verbs arrive in later slices
+---@param verb string|nil
+---@param arg string|nil
+function M.pr(verb, arg)
+    local pr = require("dipher.pr")
+    if verb == nil or verb == "" or tonumber(verb) then
+        return pr.open({ number = verb and tonumber(verb) or nil })
+    end
+    -- explicit override: owner/repo#number targets a specific repo (forks, §1)
+    local owner, repo, num = verb:match("^([^/]+)/([^#]+)#(%d+)$")
+    if owner then
+        return pr.open({ coords = { owner = owner, repo = repo }, number = tonumber(num) })
+    end
+    local dispatch = {
+        list = function()
+            pr.open({ filter = arg or "open" })
+        end,
+    }
+    local h = dispatch[verb]
+    if h then
+        return h()
+    end
+    notify("unknown `pr` subcommand: " .. verb, vim.log.levels.WARN)
+end
+
 -- :Dipher close: close the panel + diff view (the whole local session)
 function M.close()
     require("dipher.git").close()
@@ -134,6 +162,7 @@ local SUB = {
     layout = M.layout,
     context = M.context,
     panel = M.panel,
+    pr = M.pr,
     close = M.close,
     gofile = M.gofile,
     log = M.log,
@@ -159,6 +188,23 @@ local VALUES = {
     layout = { "stacked", "split" },
     context = { "full", "+", "-" },
     panel = { "set" },
+    -- later slices implement these sub-verbs; listing now keeps completion stable
+    pr = {
+        "list",
+        "review",
+        "submit",
+        "discard",
+        "resume",
+        "checks",
+        "merge",
+        "checkout",
+        "ready",
+        "draft",
+        "close",
+        "reopen",
+        "browser",
+        "url",
+    },
     sidecar = { "stop" },
     cache = { "clear" },
 }

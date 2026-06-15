@@ -107,6 +107,15 @@ function M.range_history(opts)
     return require("dipher.git").range_history(opts or {})
 end
 
+-- open the PR frontend (§8.2): pick a PR (or jump to `opts.number`) and drive the
+-- reused file panel + diff view from the sidecar's blobs. `opts` are runtime:
+-- `number`, `filter` ("open"/"mine"/"review_requested"), `coords` ({owner, repo}
+-- override for forks). `require("dipher").pr_open({ number = 42 })`
+---@param opts table|nil
+function M.pr_open(opts)
+    require("dipher.pr").open(opts or {})
+end
+
 -- close the local session, the file panel and the diff view it drives (the `dc`
 -- keymap binds to this). mirrors `:DiffviewClose`
 function M.close()

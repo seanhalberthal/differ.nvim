@@ -319,6 +319,16 @@ function Panel:_highlight()
                     { end_col = m.context_end, hl_group = "dipherPanelContext" }
                 )
             end
+            -- dim a viewed PR file's checkbox so reviewed files recede (§8.2)
+            if m.viewed_col and m.entry and m.entry.viewed then
+                vim.api.nvim_buf_set_extmark(
+                    self.bufnr,
+                    ns,
+                    row,
+                    m.viewed_col,
+                    { end_col = m.viewed_end, hl_group = "dipherPanelContext" }
+                )
+            end
             local e = m.entry
             if e and (e.additions > 0 or e.deletions > 0) then
                 -- pin the diffstat to the window's right edge as virtual text, so

@@ -141,4 +141,27 @@ describe("panel.render.lines", function()
         local disp = (out.lines[1]:gsub("…", "."):gsub("·", "."))
         assert.is_true(#disp <= 31 - 5) -- fits within width less the "+0 -7 " reserve
     end)
+
+    it("renders a viewed checkbox column for PR entries, pointing cols past it", function()
+        local viewed = { path = "a.lua", status = "M", additions = 0, deletions = 0, viewed = true }
+        local unviewed =
+            { path = "b.lua", status = "A", additions = 0, deletions = 0, viewed = false }
+        local root = tree.build({ viewed, unviewed })
+        local out = render.lines({ { rows = tree.rows(root, "tree", {}) } })
+        assert.are.equal("[x] M a.lua", out.lines[1])
+        assert.are.equal("[ ] A b.lua", out.lines[2])
+        local m = out.meta[1]
+        assert.are.equal(4, m.status_col) -- "M" after "[x] "
+        assert.are.equal("M", out.lines[1]:sub(m.status_col + 1, m.status_col + 1))
+        assert.are.equal(0, m.viewed_col)
+        assert.are.equal("[x]", out.lines[1]:sub(m.viewed_col + 1, m.viewed_end))
+    end)
+
+    it("omits the checkbox column for local entries (viewed == nil)", function()
+        local root = tree.build({ entry("a.lua", "M") })
+        local out = render.lines({ { rows = tree.rows(root, "tree", {}) } })
+        assert.are.equal("M a.lua", out.lines[1])
+        assert.is_nil(out.meta[1].viewed_col)
+        assert.are.equal(0, out.meta[1].status_col)
+    end)
 end)

@@ -3,3 +3,4 @@
 *.o
 .luarc.local.json
 docs/overview.md
+/.plans
