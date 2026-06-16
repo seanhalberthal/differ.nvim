@@ -358,6 +358,7 @@ end
 -- ui.thread builder and the dipherThread* groups, so it matches the stacked overlay
 
 local peek = { win = nil, buf = nil, key = nil }
+local PEEK_AUGROUP = "dipher.pr.peek"
 
 -- whether `group`'s float is collapsed (hidden) by an explicit gc override. the float
 -- shows by default while the cursor is on the row, so the baseline is group_active=true
@@ -368,12 +369,33 @@ local function peek_collapsed(session, group)
     return thread_collapsed(session, group.threads[1], true)
 end
 
--- close the peek float (keeping its scratch buffer for reuse)
+-- close the peek float (keeping its scratch buffer for reuse) and drop its window guard
 function M.close_peek()
     if peek.win and vim.api.nvim_win_is_valid(peek.win) then
         pcall(vim.api.nvim_win_close, peek.win, true)
     end
     peek.win, peek.key = nil, nil
+    pcall(vim.api.nvim_del_augroup_by_name, PEEK_AUGROUP)
+end
+
+-- while the float is open, close it as soon as focus enters a window that isn't a diff
+-- column. the diff's cursor hook is buffer-local, so leaving to the panel (or any other
+-- window) wouldn't otherwise fire it and the float would orphan over the layout
+---@param session table
+local function arm_peek_guard(session)
+    local group = vim.api.nvim_create_augroup(PEEK_AUGROUP, { clear = true })
+    vim.api.nvim_create_autocmd("WinEnter", {
+        group = group,
+        callback = function()
+            local buf = vim.api.nvim_get_current_buf()
+            for _, col in ipairs((session.view and session.view.columns) or {}) do
+                if col.bufnr == buf then
+                    return -- still in a diff column; the buffer-local hook takes it
+                end
+            end
+            M.close_peek()
+        end,
+    })
 end
 
 -- the window currently displaying `bufnr` (the column the cursor is on, else any),
@@ -423,8 +445,9 @@ end
 
 -- open (or re-point) the peek float over `group`'s anchor row. positions just below the
 -- line, in the column the thread sits on, non-focusable so the cursor never enters it
+---@param session table
 ---@param group table  -- { key, bufnr, row, threads }
-local function peek_open(group)
+local function peek_open(session, group)
     local host = win_for_buf(group.bufnr)
     if not host then
         return M.close_peek()
@@ -474,6 +497,7 @@ local function peek_open(group)
         vim.wo[peek.win].wrap = false
     end
     peek.key = group.key
+    arm_peek_guard(session) -- close the float if focus leaves the diff columns
 end
 
 -- re-render the open float against the current anchors after an apply (resolve state
@@ -488,7 +512,7 @@ function M.sync_peek(session)
             if peek_collapsed(session, a) then
                 return M.close_peek() -- gc hid it; honour the override
             end
-            return peek_open(a)
+            return peek_open(session, a)
         end
     end
     M.close_peek()
@@ -519,7 +543,7 @@ function M.on_cursor(session)
             return M.close_peek() -- off a thread row, or gc hid this one
         end
         if peek.key ~= group.key or not (peek.win and vim.api.nvim_win_is_valid(peek.win)) then
-            peek_open(group)
+            peek_open(session, group)
         end
         return
     end
