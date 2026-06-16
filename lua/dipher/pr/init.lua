@@ -100,41 +100,18 @@ function M.map_files(files)
     return out
 end
 
--- parse a RFC3339 / ISO-8601 timestamp to an epoch for the relative label. coarse
--- buckets mean the local-vs-utc interpretation never shifts the displayed unit
----@param ts string
----@return integer|nil
-local function parse_iso(ts)
-    local y, mo, d, h, mi, s = ts:match("^(%d+)%-(%d+)%-(%d+)[T ](%d+):(%d+):(%d+)")
-    if not y then
-        y, mo, d = ts:match("^(%d+)%-(%d+)%-(%d+)")
-        h, mi, s = 0, 0, 0
-    end
-    if not y then
-        return nil
-    end
-    return os.time({
-        year = tonumber(y),
-        month = tonumber(mo),
-        day = tonumber(d),
-        hour = tonumber(h),
-        min = tonumber(mi),
-        sec = tonumber(s),
-        isdst = false,
-    })
-end
-
 ---@param ts string|nil
 ---@return string
 local function reltime(ts)
     if type(ts) ~= "string" or ts == "" then
         return ""
     end
-    local epoch = parse_iso(ts)
+    local date = require("dipher.util.date")
+    local epoch = date.parse_iso(ts)
     if not epoch then
         return ts
     end
-    return require("dipher.util.date").relative(epoch)
+    return date.relative(epoch)
 end
 
 -- predictive prefetch (§9.1 phase 6, minimal slice): warm the immediate neighbours of
@@ -197,9 +174,18 @@ local function show_file(entry, focus_line)
                 staging = false,
                 can_stage = false,
                 extra_keymaps = session.diff_extra_keymaps, -- ]u/[u on the diff surface (§8.2)
+                -- re-apply the thread overlay after a layout/context re-render, and
+                -- expand the thread under the cursor as it moves (§6.4)
+                on_rerender = function()
+                    require("dipher.pr.threads").apply(session)
+                end,
+                on_cursor = function()
+                    require("dipher.pr.threads").on_cursor(session)
+                end,
             })
         end
         prefetch_around(entry) -- warm the neighbours so the next step is instant
+        require("dipher.pr.threads").refresh(session) -- (re)paint inline comment threads (§6.4)
     end
 
     local cached = session.versions[entry.path]
@@ -329,6 +315,9 @@ local function open_session(pr, detail)
         entries = entries, -- flat FileEntry[] (single section), shared by ref with the panel
         versions = {}, -- per-path blob memo; valid for the session (shas are pinned)
         prefetching = {}, -- paths with an in-flight predictive prefetch (dedupe guard)
+        threads = nil, -- PR-wide review threads (§6.4), fetched once by pr.threads.refresh
+        thread_collapsed = {}, -- per thread_id collapse override (gc); nil = cursor-driven
+        thread_active = nil, -- the anchor key (bufnr:row) the cursor expands (peek)
         view = nil,
         panel = nil,
     }

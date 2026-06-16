@@ -12,7 +12,8 @@ local M = {}
 -- static links: body diff layers and structural panel chrome
 ---@type table<string, vim.api.keyset.highlight>
 local LINKS = {
-    dipherThreadRange = { link = "Visual" },
+    -- thread overlay (§6.4): all thread groups (range background, panel-tinted chrome,
+    -- meta, body) ride the palette + theme bg in thread_groups
     -- our own cursor-line overlay: CursorLine is low-priority when it has no
     -- foreground (`:h hl-CursorLine`), so it loses to the diff line backgrounds; we
     -- repaint it as a line_hl_group above them. links to CursorLine to track the theme
@@ -114,6 +115,28 @@ local function status_groups(p)
     }
 end
 
+-- thread overlay groups (§6.4): every chunk sits on a faint panel tint so the comment
+-- block reads as a non-code overlay (the jetbrains look), not more code. the chrome
+-- (spine + header/footer rules + author) is state-coloured: open active (blue),
+-- resolved receded (grey), pending draft (orange); meta is dim; body keeps the normal
+-- fg. all share the one panel bg blended off Normal
+---@param p table<string, integer>
+---@return table<string, vim.api.keyset.highlight>
+local function thread_groups(p)
+    local base = bg_of({ "Normal" }, 0x14161b)
+    local panel = blend(p.blue, base, 0.12) -- subtle blue-tinted panel
+    return {
+        dipherThread = { fg = p.blue, bg = panel },
+        dipherThreadResolved = { fg = p.grey, bg = panel },
+        dipherThreadPending = { fg = p.orange, bg = panel },
+        dipherThreadMeta = { fg = p.grey, bg = panel },
+        dipherThreadBody = { bg = panel }, -- fg unset -> Normal, readable on the tint
+        -- the lines a range comment covers: the same blue family as the panel, a touch
+        -- stronger so it reads over the diff bg, but far gentler than the old Visual link
+        dipherThreadRange = { bg = blend(p.blue, base, 0.2) },
+    }
+end
+
 -- coherent two-tone diff backgrounds: a quiet line tint and a richer same-hue word
 -- patch, both blended from one vivid colour per side (the add/delete fg) over the
 -- editor bg. deriving line and patch from the same source keeps the hue identical
@@ -140,7 +163,8 @@ end
 -- palette so it tracks theme changes
 local function apply()
     local p = palette()
-    local groups = vim.tbl_extend("error", {}, LINKS, status_groups(p), diff_bg_groups(p))
+    local groups =
+        vim.tbl_extend("error", {}, LINKS, status_groups(p), diff_bg_groups(p), thread_groups(p))
     for name, val in pairs(groups) do
         vim.api.nvim_set_hl(0, name, vim.tbl_extend("keep", { default = true }, val))
     end

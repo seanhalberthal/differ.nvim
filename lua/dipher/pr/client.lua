@@ -63,4 +63,30 @@ function M.set_file_viewed(pr, path, viewed, cb)
     )
 end
 
+-- get_threads result: [{id, thread_id, path, side, line, start_side?, start_line?,
+-- resolved, is_pending, comments:[{id, author, body, created_at}]}]. PR-wide; the
+-- frontend keeps it per session and filters to the current file's path when painting
+---@param pr { owner: string, repo: string, number: integer }
+---@param cb fun(err: table|nil, result: any)
+function M.get_threads(pr, cb)
+    sidecar.request("get_threads", { owner = pr.owner, repo = pr.repo, number = pr.number }, cb)
+end
+
+-- resolve_thread result: {resolved}. `thread_id` is the graphql node id from
+-- get_threads; the pr coords are still sent (the sidecar validates them and keys its
+-- thread-cache invalidation on them, §7.5)
+---@param pr { owner: string, repo: string, number: integer }
+---@param thread_id string
+---@param resolved boolean
+---@param cb fun(err: table|nil, result: any)
+function M.resolve_thread(pr, thread_id, resolved, cb)
+    sidecar.request("resolve_thread", {
+        owner = pr.owner,
+        repo = pr.repo,
+        number = pr.number,
+        thread_id = thread_id,
+        resolved = resolved,
+    }, cb)
+end
+
 return M

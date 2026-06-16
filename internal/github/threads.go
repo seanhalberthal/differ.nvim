@@ -15,7 +15,7 @@ func (c *Client) GetThreads(ctx context.Context, owner, repo string, number int)
 	if t, ok := c.cache.thread(key); ok {
 		return t, nil
 	}
-	var out []Thread
+	out := []Thread{} // non-nil so an empty PR marshals to [] (null would decode to vim.NIL)
 	cursor := ""
 	for {
 		var page threadsGQL
