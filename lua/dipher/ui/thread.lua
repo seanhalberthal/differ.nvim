@@ -109,11 +109,9 @@ function M.build(thread, opts)
     local comments = thread.comments or {}
     local rows = {}
 
-    -- header: first comment on the top rule, with the resolved / draft state tags
+    -- header: first comment on the top rule, with the draft state tag (the open /
+    -- resolved state sits on the footer rule, see below)
     local header = comment_header(comments[1] or {}, TOP, hl, reltime)
-    if thread.resolved then
-        header[#header + 1] = { " · ✓ resolved", "dipherThreadMeta" }
-    end
     if thread.is_pending then
         header[#header + 1] = { " (draft)", hl }
     end
@@ -128,20 +126,20 @@ function M.build(thread, opts)
         append_body(comments[i], hl, rows)
     end
 
-    -- footer rule: reply count and the open/resolved state, joined by " · "
+    -- footer rule: reply count then the open/resolved state, in their own chunks so the
+    -- resolved tag rides its own green group while the rest stays meta-grey
+    local footer = { { BOT, hl } }
     local replies = math.max(0, #comments - 1)
-    local parts = {}
     if replies > 0 then
-        parts[#parts + 1] = "↳ " .. (replies == 1 and "1 reply" or replies .. " replies")
+        local n = replies == 1 and "1 reply" or replies .. " replies"
+        footer[#footer + 1] = { "↳ " .. n .. " · ", "dipherThreadMeta" }
     end
-    if not thread.resolved then
-        parts[#parts + 1] = "open"
-    end
-    if #parts > 0 then
-        rows[#rows + 1] = { { BOT, hl }, { table.concat(parts, " · "), "dipherThreadMeta" } }
+    if thread.resolved then
+        footer[#footer + 1] = { "✓ resolved", "dipherThreadResolvedTag" }
     else
-        rows[#rows + 1] = { { "└─", hl } }
+        footer[#footer + 1] = { "open", "dipherThreadMeta" }
     end
+    rows[#rows + 1] = footer
     return rows
 end
 

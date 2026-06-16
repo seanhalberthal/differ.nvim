@@ -78,20 +78,22 @@ describe("ui.thread.build (expanded)", function()
 end)
 
 describe("ui.thread.build (resolved + pending state)", function()
-    it("tags the header resolved, greys the chrome, drops the open tag", function()
+    it("tags the footer resolved in green, greys the chrome, drops the open tag", function()
         local t = { resolved = true, is_pending = false, comments = OPEN.comments }
         local rows = build(t)
-        assert.are.equal("┌─ @alice · 3d ago · ✓ resolved", text(rows[1]))
+        assert.are.equal("┌─ @alice · 3d ago", text(rows[1])) -- state moved off the header
         assert.are.same({ "┌─ ", "dipherThreadResolved" }, rows[1][1])
-        assert.are.equal("└─ ↳ 1 reply", text(rows[#rows])) -- no "· open"
+        assert.are.equal("└─ ↳ 1 reply · ✓ resolved", text(rows[#rows]))
+        -- the resolved tag rides its own green group, separate from the meta chrome
+        assert.are.same({ "✓ resolved", "dipherThreadResolvedTag" }, rows[#rows][#rows[#rows]])
     end)
 
-    it("a resolved single-comment thread closes with a bare corner", function()
+    it("a resolved single-comment thread still shows the resolved tag on the footer", function()
         local rows = build({
             resolved = true,
             comments = { { author = "a", body = "x", created_at = "t" } },
         })
-        assert.are.equal("└─", text(rows[#rows]))
+        assert.are.equal("└─ ✓ resolved", text(rows[#rows]))
     end)
 
     it("marks a pending draft and uses the pending group", function()

@@ -128,6 +128,7 @@ local function thread_groups(p)
     return {
         dipherThread = { fg = p.blue, bg = panel },
         dipherThreadResolved = { fg = p.grey, bg = panel },
+        dipherThreadResolvedTag = { fg = p.green, bg = panel }, -- the footer "✓ resolved" tag
         dipherThreadPending = { fg = p.orange, bg = panel },
         dipherThreadMeta = { fg = p.grey, bg = panel },
         dipherThreadBody = { bg = panel }, -- fg unset -> Normal, readable on the tint
