@@ -1,0 +1,71 @@
+local comment = require("dipher.pr.comment")
+
+-- a fixture line map: only `.lines[row] = { kind, old, new }` is read by the anchor
+-- helpers, so a plain table stands in for a rendered LineMap. a unified (stacked)
+-- column interleaves context / deletion / addition; meta is filler with no diff line
+local UNIFIED = {
+    lines = {
+        [1] = { kind = "context", old = 1, new = 1 },
+        [2] = { kind = "old", old = 2 }, -- a deletion (left side only)
+        [3] = { kind = "new", new = 2 }, -- an addition (right side only)
+        [4] = { kind = "meta" }, -- filler, no anchor
+        [5] = { kind = "context", old = 3, new = 3 },
+        [6] = { kind = "new", new = 4 },
+        [7] = { kind = "old", old = 4 },
+    },
+}
+
+describe("pr.comment.row_anchor (single)", function()
+    it("anchors an addition row to RIGHT/new", function()
+        assert.are.same({ side = "RIGHT", line = 2 }, comment.row_anchor(UNIFIED, 3, "unified"))
+    end)
+
+    it("anchors a deletion row to LEFT/old", function()
+        assert.are.same({ side = "LEFT", line = 2 }, comment.row_anchor(UNIFIED, 2, "unified"))
+    end)
+
+    it("prefers the new side on a context row", function()
+        assert.are.same({ side = "RIGHT", line = 1 }, comment.row_anchor(UNIFIED, 1, "unified"))
+    end)
+
+    it("rejects a meta / no-partner row", function()
+        local anchor, err = comment.row_anchor(UNIFIED, 4, "unified")
+        assert.is_nil(anchor)
+        assert.is_truthy(err)
+    end)
+
+    it("a split column is single-sided", function()
+        assert.are.same({ side = "LEFT", line = 2 }, comment.row_anchor(UNIFIED, 2, "old"))
+        -- the new column has no `new` on a deletion row, so it rejects
+        assert.is_nil(comment.row_anchor(UNIFIED, 2, "new"))
+    end)
+end)
+
+describe("pr.comment.range_anchor", function()
+    it("builds a same-side range with start_line < line", function()
+        local a = comment.range_anchor(UNIFIED, 3, 5, "unified") -- new/2 .. context/3 (RIGHT)
+        assert.are.same({ start_side = "RIGHT", start_line = 2, side = "RIGHT", line = 3 }, a)
+    end)
+
+    it("allows a LEFT -> RIGHT replacement range", function()
+        local a = comment.range_anchor(UNIFIED, 2, 3, "unified") -- old/2 .. new/2
+        assert.are.same({ start_side = "LEFT", start_line = 2, side = "RIGHT", line = 2 }, a)
+    end)
+
+    it("rejects a RIGHT -> LEFT selection GitHub can't represent", function()
+        local a, err = comment.range_anchor(UNIFIED, 6, 7, "unified") -- new .. old (top-down)
+        assert.is_nil(a)
+        assert.is_truthy(err and err:find("mixed-side", 1, true))
+    end)
+
+    it("collapses a single-row selection to a single anchor", function()
+        assert.are.same(
+            { side = "RIGHT", line = 2 },
+            comment.range_anchor(UNIFIED, 3, 3, "unified")
+        )
+    end)
+
+    it("rejects when an endpoint has no anchor", function()
+        assert.is_nil(comment.range_anchor(UNIFIED, 3, 4, "unified")) -- row 4 is meta
+    end)
+end)

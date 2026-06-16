@@ -109,6 +109,7 @@ Panel.__index = Panel
 ---@field spec string|string[]|false  -- resolved lhs (a keymaps value)
 ---@field fn fun()
 ---@field desc string
+---@field mode? string|string[] -- keymap mode (default normal; pr range-comment uses "x")
 ---@field icons? boolean -- filetype devicons (default true when available)
 ---@field listing? "tree"|"name"
 ---@field position? "bottom"|"top"|"left"|"right"

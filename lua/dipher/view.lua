@@ -551,7 +551,7 @@ function View:_setup_window(winid, bufnr)
         end, "dipher: unstage all hunks")
     end
     for _, m in ipairs(self.extra_keymaps or {}) do
-        bind(bufnr, m.spec, m.fn, m.desc)
+        bind(bufnr, m.spec, m.fn, m.desc, m.mode)
     end
 end
 

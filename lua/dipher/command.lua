@@ -98,6 +98,23 @@ function M.pr(verb, arg)
         resolve = function()
             pr.resolve()
         end,
+        -- the review-authoring loop (§8.2): start a draft, submit/discard it, resume a
+        -- pending draft, or reply to the thread under the cursor
+        review = function()
+            pr.review()
+        end,
+        submit = function()
+            pr.submit()
+        end,
+        discard = function()
+            pr.discard_review()
+        end,
+        resume = function()
+            pr.resume(arg)
+        end,
+        reply = function()
+            pr.reply()
+        end,
     }
     local h = dispatch[verb]
     if h then
@@ -202,6 +219,7 @@ local VALUES = {
     pr = {
         "list",
         "resolve",
+        "reply",
         "review",
         "submit",
         "discard",

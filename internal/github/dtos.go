@@ -210,7 +210,13 @@ type submitReviewGQL struct {
 	} `json:"submitPullRequestReview"`
 }
 
-// prNodeIDGQL carries a PR's node id (the anchor for an immediate review thread).
+// restComment is the REST POST /pulls/{n}/comments response: an immediate (published)
+// review comment's numeric id.
+type restComment struct {
+	ID int64 `json:"id"`
+}
+
+// prNodeIDGQL carries a PR's node id (the anchor for review state mutations).
 type prNodeIDGQL struct {
 	Repository struct {
 		PullRequest struct {

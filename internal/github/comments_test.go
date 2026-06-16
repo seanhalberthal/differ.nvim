@@ -43,22 +43,26 @@ func TestPostCommentDraftThread(t *testing.T) {
 	}
 }
 
-func TestPostCommentImmediateThreadLooksUpPRNode(t *testing.T) {
-	var ops []string
+// an immediate (no-review) post publishes via REST: resolve the head sha, then POST
+// the comment to /pulls/{n}/comments. it must NOT take the GraphQL draft path (which
+// would attach to the viewer's pending review and stay unpublished).
+func TestPostCommentImmediatePublishesViaREST(t *testing.T) {
+	var calls []string
 	c := newClient(func(r *http.Request) (*http.Response, error) {
-		body := readBody(t, r)
-		op := commentOp(t, body)
-		ops = append(ops, op)
-		switch op {
-		case "PRNodeID":
-			return resp(200, `{"data":{"repository":{"pullRequest":{"id":"PR_NODE"}}}}`, nil), nil
-		case "AddThread":
-			if !strings.Contains(string(body), `"prId":"PR_NODE"`) {
-				t.Errorf("an immediate post must anchor to the PR node: %s", body)
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/o/r/pulls/3":
+			return resp(200, `{"base":{"sha":"base1"},"head":{"sha":"head9"}}`, nil), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/o/r/pulls/3/comments":
+			body := string(readBody(t, r))
+			for _, want := range []string{`"commit_id":"head9"`, `"path":"a.go"`, `"line":5`, `"side":"RIGHT"`, `"body":"hi"`} {
+				if !strings.Contains(body, want) {
+					t.Errorf("immediate REST payload missing %s: %s", want, body)
+				}
 			}
-			return resp(200, `{"data":{"addPullRequestReviewThread":{"thread":{"id":"PRT_1","comments":{"nodes":[{"fullDatabaseId":"42"}]}}}}}`, nil), nil
+			return resp(201, `{"id":42}`, nil), nil
 		}
-		t.Fatalf("unexpected op %s", op)
+		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		return nil, nil
 	})
 	pc, err := c.PostComment(context.Background(), "o", "r", 3, PostCommentInput{
@@ -67,10 +71,10 @@ func TestPostCommentImmediateThreadLooksUpPRNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ops) != 2 || ops[0] != "PRNodeID" || ops[1] != "AddThread" {
-		t.Errorf("want lookup then add, got %v", ops)
+	if len(calls) != 2 || calls[0] != "GET /repos/o/r/pulls/3" || calls[1] != "POST /repos/o/r/pulls/3/comments" {
+		t.Errorf("want head lookup then REST post, got %v", calls)
 	}
-	if pc.ID != 42 || pc.ThreadID != "PRT_1" {
+	if pc.ID != 42 || pc.ThreadID != "" {
 		t.Errorf("bad result: %+v", pc)
 	}
 }

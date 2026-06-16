@@ -69,7 +69,10 @@ M.defaults = {
         -- native lsp prefix (no lsp on a synthetic diff buffer)
         toggle_thread = "gc", -- pr diff: collapse/expand the thread under the cursor
         resolve_thread = "gr", -- pr diff: resolve/unresolve the thread under the cursor
-        -- comment/reply (ga/gp) land in slice 4
+        -- pr diff commenting. ga shadows native ga (:ascii, negligible); gp shadows
+        -- native gp (paste, inert on the read-only diff)
+        comment = "ga", -- comment on the line (normal) or the selection (visual)
+        reply = "gp", -- reply to the thread under the cursor
         scroll_down = "f", -- all three (shadows native f/b; set false to restore)
         scroll_up = "b",
         select = { "<CR>", "o" }, -- panel, history

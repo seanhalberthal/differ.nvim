@@ -89,4 +89,62 @@ function M.resolve_thread(pr, thread_id, resolved, cb)
     }, cb)
 end
 
+-- the flat pr coords every review/comment call sends (the sidecar decodes owner/repo/
+-- number at the top level), merged with the call's own args
+---@param pr { owner: string, repo: string, number: integer }
+---@param args table|nil
+---@return table
+local function with_pr(pr, args)
+    return vim.tbl_extend(
+        "force",
+        { owner = pr.owner, repo = pr.repo, number = pr.number },
+        args or {}
+    )
+end
+
+-- start_review result: {review_id}. idempotent: replaying it reattaches to the viewer's
+-- existing pending draft rather than orphaning a second one (§7.3)
+---@param pr { owner: string, repo: string, number: integer }
+---@param cb fun(err: table|nil, result: any)
+function M.start_review(pr, cb)
+    sidecar.request("start_review", with_pr(pr), cb)
+end
+
+-- discard_review result: {}. drops the pending draft and its unsubmitted comments
+---@param pr { owner: string, repo: string, number: integer }
+---@param review_id string
+---@param cb fun(err: table|nil, result: any)
+function M.discard_review(pr, review_id, cb)
+    sidecar.request("discard_review", with_pr(pr, { review_id = review_id }), cb)
+end
+
+-- get_pending_review result: {review_id, comments?:[{id, path, side, line, start_*?,
+-- body}]}. review_id is null when the viewer has no draft; the comments drive resume's
+-- position restore (§8.2)
+---@param pr { owner: string, repo: string, number: integer }
+---@param cb fun(err: table|nil, result: any)
+function M.get_pending_review(pr, cb)
+    sidecar.request("get_pending_review", with_pr(pr), cb)
+end
+
+-- post_comment result: {id, thread_id}. a reply when args.in_reply_to is set, else a
+-- new thread (a draft when args.review_id is set, immediate when it isn't, §8.2). args:
+-- path/side/line/body, start_side?/start_line? (range), in_reply_to?, review_id?,
+-- expected_head? (the session head for the §7.5 TOCTOU guard)
+---@param pr { owner: string, repo: string, number: integer }
+---@param args table
+---@param cb fun(err: table|nil, result: any)
+function M.post_comment(pr, args, cb)
+    sidecar.request("post_comment", with_pr(pr, args), cb)
+end
+
+-- submit_review result: {id}. finalises the draft as one batch with an event. args:
+-- review_id/event (APPROVE|REQUEST_CHANGES|COMMENT)/body, expected_head?
+---@param pr { owner: string, repo: string, number: integer }
+---@param args table
+---@param cb fun(err: table|nil, result: any)
+function M.submit_review(pr, args, cb)
+    sidecar.request("submit_review", with_pr(pr, args), cb)
+end
+
 return M

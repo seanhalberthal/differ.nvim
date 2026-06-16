@@ -39,6 +39,10 @@ local function notify_err(err)
     notify(hint and (msg .. " (" .. hint .. ")") or msg, vim.log.levels.ERROR)
 end
 
+-- exposed for the review/comment modules, which share the same typed-error treatment
+M.notify = notify
+M.notify_err = notify_err
+
 ---@param sha string|nil
 ---@return string
 local function short(sha)
@@ -186,6 +190,19 @@ local function show_file(entry, focus_line)
         end
         prefetch_around(entry) -- warm the neighbours so the next step is instant
         require("dipher.pr.threads").refresh(session) -- (re)paint inline comment threads (§6.4)
+        -- resume position restore (§8.2): once the target file is rendered, drop the
+        -- cursor on the pending comment's mapped row, then clear the one-shot focus
+        local pf = session.pending_focus
+        if pf and pf.path == entry.path and session.view and session.view:is_open() then
+            session.pending_focus = nil
+            local side = pf.side == "LEFT" and "old" or "new"
+            local col = session.view:column_for(side)
+            local idx = col and (side == "old" and col.map.from_old or col.map.from_new)
+            local row = idx and idx[pf.line]
+            if row and col.winid and vim.api.nvim_win_is_valid(col.winid) then
+                vim.api.nvim_win_set_cursor(col.winid, { row, 0 })
+            end
+        end
     end
 
     local cached = session.versions[entry.path]
@@ -374,10 +391,92 @@ function M.resolve()
     end)
 end
 
+-- shared conflict recovery (§7.5 / §11): a mutation hit a moved head. re-fetch the PR
+-- (fresh base/head sha), drop the blob memo + thread cache (both were pinned to the old
+-- shas), re-source the current file + overlay, and flag the staleness. it never
+-- auto-retries the mutation; the caller re-prompts the user against the refreshed head
+---@param on_ready fun()|nil
+function M.handle_conflict(on_ready)
+    if not (session and session.panel) then
+        return
+    end
+    client.get_pr(session.pr, function(err, detail)
+        if not (session and session.panel and session.panel:is_open()) then
+            return
+        end
+        if err then
+            return notify_err(err)
+        end
+        session.pr_meta.base_sha = detail.base_sha
+        session.pr_meta.head_sha = detail.head_sha
+        session.pr_meta.head_ref = detail.head_ref
+        session.versions = {} -- the blob memo was pinned to the old shas
+        session.threads = nil -- re-fetch threads against the fresh head
+        local cur = session.panel:current_entry()
+        if cur then
+            show_file(cur) -- re-source the diff + overlay at the new head
+        end
+        notify(
+            "the PR head moved; refreshed to the latest — review and re-submit",
+            vim.log.levels.WARN
+        )
+        if on_ready then
+            on_ready()
+        end
+    end)
+end
+
+-- select a file + drop the cursor on a (side, line) anchor, mapped after the file
+-- renders (used by resume position-restore). a one-shot via session.pending_focus
+---@param target { path: string, side: string, line: integer }
+function M.goto_anchor(target)
+    if not (session and session.panel) then
+        return
+    end
+    session.pending_focus = target
+    session.panel:goto_path(target.path, true) -- sources the file; render applies the focus
+end
+
+-- thin, scriptable wrappers over the review/comment modules, acting on the live session
+function M.comment()
+    if session then
+        require("dipher.pr.comment").comment(session)
+    end
+end
+function M.comment_range()
+    if session then
+        require("dipher.pr.comment").comment_range(session)
+    end
+end
+function M.reply()
+    if session then
+        require("dipher.pr.comment").reply(session)
+    end
+end
+function M.review()
+    if not session then
+        return notify("open a PR first")
+    end
+    require("dipher.pr.review").start(session)
+end
+function M.submit()
+    if not session then
+        return notify("open a PR first")
+    end
+    require("dipher.pr.review").submit(session)
+end
+function M.discard_review()
+    if not session then
+        return notify("open a PR first")
+    end
+    require("dipher.pr.review").discard(session)
+end
+
 -- open the session tab + file panel for a fetched PR and land on the first file
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param detail table  -- get_pr result
-local function open_session(pr, detail)
+---@param opts { after?: fun() }|nil
+local function open_session(pr, detail, opts)
     local entries = M.map_files(detail.files)
     if #entries == 0 then
         return notify("no changed files in this pull request")
@@ -413,6 +512,8 @@ local function open_session(pr, detail)
         threads = nil, -- PR-wide review threads (§6.4), fetched once by pr.threads.refresh
         thread_collapsed = {}, -- per thread_id collapse override (gc); nil = cursor-driven
         thread_active = nil, -- the anchor key (bufnr:row) the cursor expands (peek)
+        review_id = nil, -- the active pending-review node id (§8.2); nil = immediate mode
+        pending_focus = nil, -- one-shot { path, side, line } for resume position-restore
         view = nil,
         panel = nil,
     }
@@ -459,6 +560,10 @@ local function open_session(pr, detail)
         { spec = diff_km.prev_thread, fn = M.prev_thread, desc = "previous review thread" },
         { spec = diff_km.toggle_thread, fn = M.toggle_thread, desc = "toggle thread" },
         { spec = diff_km.resolve_thread, fn = M.resolve, desc = "resolve thread" },
+        -- commenting (§8.2): ga single (normal) / range (visual), gp reply to a thread
+        { spec = diff_km.comment, fn = M.comment, desc = "comment" },
+        { spec = diff_km.comment, fn = M.comment_range, desc = "comment on selection", mode = "x" },
+        { spec = diff_km.reply, fn = M.reply, desc = "reply to thread" },
     }
 
     local panel = Panel.new({
@@ -490,16 +595,21 @@ local function open_session(pr, detail)
 
     -- auto-select the first file, leaving the cursor in the diff (DiffviewOpen-style)
     panel:select(true)
+    if opts and opts.after then
+        opts.after() -- e.g. resume: reattach the pending draft + restore position
+    end
 end
 
--- M.show(pr): fetch the PR and open its session
+-- M.show(pr): fetch the PR and open its session. opts.after runs once the session is
+-- built (resume uses it to reattach the pending draft)
 ---@param pr { owner: string, repo: string, number: integer }
-function M.show(pr)
+---@param opts { after?: fun() }|nil
+function M.show(pr, opts)
     client.get_pr(pr, function(err, detail)
         if err then
             return notify_err(err)
         end
-        open_session(pr, detail)
+        open_session(pr, detail, opts)
     end)
 end
 
@@ -551,6 +661,40 @@ function M.open(opts)
             pick(coords, prs)
         end)
     end)
+end
+
+-- M.resume(arg): reattach a pending review (§8.2). a number (or owner/repo#number)
+-- opens that PR then reattaches + restores position; no arg reattaches the currently
+-- open PR's draft. with no arg and no session, there's nothing to target
+---@param arg string|nil
+function M.resume(arg)
+    local function open_then_reattach(pr)
+        M.show(pr, {
+            after = function()
+                require("dipher.pr.review").reattach(session)
+            end,
+        })
+    end
+    if arg and arg ~= "" then
+        local owner, repo_name, num = arg:match("^([^/]+)/([^#]+)#(%d+)$")
+        if owner then
+            return open_then_reattach({ owner = owner, repo = repo_name, number = tonumber(num) })
+        end
+        local n = tonumber(arg)
+        if not n then
+            return notify("resume expects a PR number or owner/repo#number", vim.log.levels.WARN)
+        end
+        return repo.resolve({}, function(err, coords)
+            if err then
+                return notify_err(err)
+            end
+            open_then_reattach({ owner = coords.owner, repo = coords.repo, number = n })
+        end)
+    end
+    if not session then
+        return notify("open a PR first, or pass a number: :Dipher pr resume <number>")
+    end
+    require("dipher.pr.review").reattach(session)
 end
 
 return M

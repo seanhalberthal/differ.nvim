@@ -4,19 +4,21 @@
 
 local M = {}
 
--- bind `fn` to every lhs in `spec` on `bufnr` in normal mode. a false/nil spec is a
--- no-op (the action is disabled); a string binds one lhs, a list binds several
+-- bind `fn` to every lhs in `spec` on `bufnr`. a false/nil spec is a no-op (the action
+-- is disabled); a string binds one lhs, a list binds several. `mode` is the keymap mode
+-- (a string or list), defaulting to normal; the pr range-comment binds visual ("x")
 ---@param bufnr integer
 ---@param spec string|string[]|false|nil
 ---@param fn fun()
 ---@param desc string
-function M.bind(bufnr, spec, fn, desc)
+---@param mode? string|string[]
+function M.bind(bufnr, spec, fn, desc, mode)
     if not spec then
         return
     end
     local list = type(spec) == "table" and spec or { spec }
     for _, lhs in ipairs(list) do
-        vim.keymap.set("n", lhs, fn, { buffer = bufnr, desc = desc, nowait = true })
+        vim.keymap.set(mode or "n", lhs, fn, { buffer = bufnr, desc = desc, nowait = true })
     end
 end
 
