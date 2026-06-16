@@ -7,6 +7,7 @@
 
 local repo = require("dipher.pr.repo")
 local client = require("dipher.pr.client")
+local viewed = require("dipher.pr.viewed")
 
 local M = {}
 
@@ -136,6 +137,42 @@ local function reltime(ts)
     return require("dipher.util.date").relative(epoch)
 end
 
+-- predictive prefetch (§9.1 phase 6, minimal slice): warm the immediate neighbours of
+-- the shown file into the per-path memo so sequential ]f/[f / ]u/[u don't wait on a
+-- round-trip. best-effort and silent: a speculative read, not a user-initiated one, so
+-- a failure just leaves the memo cold (the on-demand path fetches it later) and never
+-- notifies. window of 1 each side; shas are pinned, so warmed blobs can't go stale
+local LOOKAHEAD = 1
+---@param entry dipher.FileEntry
+local function prefetch_around(entry)
+    if not session then
+        return
+    end
+    local idx = viewed.index_of(session.entries, entry)
+    if not idx then
+        return
+    end
+    session.prefetching = session.prefetching or {}
+    for _, dir in ipairs({ -1, 1 }) do
+        for step = 1, LOOKAHEAD do
+            local nb = session.entries[idx + dir * step]
+            if nb and not session.versions[nb.path] and not session.prefetching[nb.path] then
+                local path = nb.path
+                session.prefetching[path] = true
+                client.get_file_versions(session.pr, path, function(err, vers)
+                    if not session then
+                        return -- session torn down while the prefetch was in flight
+                    end
+                    session.prefetching[path] = nil
+                    if not err and vers then
+                        session.versions[path] = vers
+                    end
+                end)
+            end
+        end
+    end
+end
+
 -- (re)source the one driven View for a file. base/head shas are pinned for the
 -- session, so the per-path memo makes re-visits instant (no IPC hop); `focus_line`
 -- holds the cursor across an in-place refresh of the same file
@@ -155,9 +192,13 @@ local function show_file(entry, focus_line)
         if session.view and session.view:is_open() then
             session.view:set_source(model, nil, focus_line and { focus_line = focus_line } or nil)
         else
-            session.view =
-                require("dipher").diff_model(model, { staging = false, can_stage = false })
+            session.view = require("dipher").diff_model(model, {
+                staging = false,
+                can_stage = false,
+                extra_keymaps = session.diff_extra_keymaps, -- ]u/[u on the diff surface (§8.2)
+            })
         end
+        prefetch_around(entry) -- warm the neighbours so the next step is instant
     end
 
     local cached = session.versions[entry.path]
@@ -177,6 +218,76 @@ local function show_file(entry, focus_line)
         session.versions[entry.path] = vers
         render(vers)
     end)
+end
+
+-- flip a file's viewed flag optimistically, repaint, then reconcile to the server's
+-- returned viewed_state (roll back + flag on error, §11). cheap and idempotent, so
+-- the one optimistic update phase 4 allows (§8.2). a no-op if already at `target`
+---@param entry dipher.FileEntry
+---@param target boolean
+local function mark_viewed(entry, target)
+    if not (session and session.panel) or entry.viewed == target then
+        return
+    end
+    local prev = entry.viewed
+    entry.viewed = target
+    session.panel:repaint()
+    client.set_file_viewed(session.pr, entry.path, target, function(err, res)
+        if not (session and session.panel and session.panel:is_open()) then
+            return -- session torn down while the mutation was in flight
+        end
+        if err then
+            entry.viewed = prev
+            session.panel:repaint()
+            return notify_err(err)
+        end
+        -- reconcile: DISMISSED counts as viewed, like map_files (§8.2)
+        local server = res and (res.viewed_state == "VIEWED" or res.viewed_state == "DISMISSED")
+        if server ~= nil and server ~= entry.viewed then
+            entry.viewed = server
+            session.panel:repaint()
+        end
+    end)
+end
+
+-- <Tab>: flip the viewed checkbox of the file under the panel cursor
+local function toggle_viewed()
+    local entry = session and session.panel and session.panel:current_entry()
+    if entry then
+        mark_viewed(entry, not entry.viewed)
+    end
+end
+
+-- ]u/[u: jump to the nearest unviewed file (no wrap; notify when none remain).
+-- forward nav marks the file being left as viewed, like ]f; backward never does
+---@param direction "next"|"prev"
+---@param keep_focus boolean  -- true when invoked from the diff (stay in the diff window)
+local function nav_unviewed(direction, keep_focus)
+    if not (session and session.panel) then
+        return
+    end
+    local cur = session.panel:current_entry()
+    local from = viewed.index_of(session.entries, cur) or 0
+    local target = viewed.next_unviewed(session.entries, from, direction)
+    if not target then
+        return notify(
+            direction == "next" and "no more unviewed files" or "no previous unviewed files"
+        )
+    end
+    if direction == "next" and cur then
+        mark_viewed(cur, true)
+    end
+    session.panel:goto_path(session.entries[target].path, keep_focus)
+end
+
+-- panel on_step: a forward ]f/[f step marks the file just left as viewed (§8.2).
+-- backward never marks, and a plain select (which never steps) marks nothing
+---@param direction "next"|"prev"
+---@param left dipher.FileEntry|nil
+local function on_step(direction, left)
+    if direction == "next" and left then
+        mark_viewed(left, true)
+    end
 end
 
 -- open the session tab + file panel for a fetched PR and land on the first file
@@ -212,9 +323,50 @@ local function open_session(pr, detail)
             title = title,
         },
         root = require("dipher.git").root(vim.fn.getcwd()), -- optional; for jump-to-file
+        entries = entries, -- flat FileEntry[] (single section), shared by ref with the panel
         versions = {}, -- per-path blob memo; valid for the session (shas are pinned)
+        prefetching = {}, -- paths with an in-flight predictive prefetch (dedupe guard)
         view = nil,
         panel = nil,
+    }
+
+    -- the pr-only viewed actions, bound on the pr surfaces only (§4.3, §8.2): toggle
+    -- on the panel, unviewed nav on both. the generic panel/diff don't own them, so
+    -- they reach the buffer via the extra_keymaps seam, not the fixed action set
+    local panel_km, diff_km = cfg.keymaps.panel, cfg.keymaps.diff
+    local panel_extra = {
+        { spec = panel_km.toggle_viewed, fn = toggle_viewed, desc = "toggle viewed" },
+        {
+            spec = panel_km.next_unviewed,
+            fn = function()
+                nav_unviewed("next", false)
+            end,
+            desc = "next unviewed file",
+        },
+        {
+            spec = panel_km.prev_unviewed,
+            fn = function()
+                nav_unviewed("prev", false)
+            end,
+            desc = "previous unviewed file",
+        },
+    }
+    -- the diff surface keeps focus in the diff window when stepping (keep_focus = true)
+    session.diff_extra_keymaps = {
+        {
+            spec = diff_km.next_unviewed,
+            fn = function()
+                nav_unviewed("next", true)
+            end,
+            desc = "next unviewed file",
+        },
+        {
+            spec = diff_km.prev_unviewed,
+            fn = function()
+                nav_unviewed("prev", true)
+            end,
+            desc = "previous unviewed file",
+        },
     }
 
     local panel = Panel.new({
@@ -222,6 +374,8 @@ local function open_session(pr, detail)
         root = ("%s/%s"):format(pr.owner, pr.repo),
         footer = detail.url or detail.head_ref,
         keymaps = cfg.keymaps.panel,
+        extra_keymaps = panel_extra,
+        on_step = on_step,
         listing = panel_cfg.listing,
         position = panel_cfg.position,
         height = panel_cfg.height,

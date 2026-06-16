@@ -38,6 +38,7 @@ end
 ---@field staging? dipher.view.Staging
 ---@field can_stage? boolean
 ---@field on_edit_unstage? fun(path: string)
+---@field extra_keymaps? dipher.panel.ExtraMap[]
 
 ---@param model dipher.DiffModel
 ---@param opts? dipher.DiffModelOpts
@@ -57,6 +58,7 @@ function M.diff_model(model, opts)
             staging = opts.staging,
             can_stage = opts.can_stage,
             on_edit_unstage = opts.on_edit_unstage,
+            extra_keymaps = opts.extra_keymaps,
         })
         :open()
 end

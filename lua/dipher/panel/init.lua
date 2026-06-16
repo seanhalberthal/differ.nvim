@@ -74,6 +74,10 @@ local STATUS_HL = {
 ---@field footer string|nil
 ---@field actions dipher.panel.Actions|nil
 ---@field keymaps table<string, string|string[]|false>
+-- session-supplied buffer maps (e.g. pr viewed nav) the generic panel doesn't own
+---@field extra_keymaps dipher.panel.ExtraMap[]|nil
+-- fired after a ]f/[f step, for an optional session hook (the pr forward-auto-mark)
+---@field on_step fun(direction: "next"|"prev", left: dipher.FileEntry|nil, new: dipher.FileEntry)|nil
 ---@field icon_for nil|fun(path: string): string|nil, string|nil
 ---@field position string
 ---@field height integer
@@ -98,6 +102,13 @@ Panel.__index = Panel
 ---@field footer? string -- rev spec shown under "Showing changes for:"
 ---@field actions? dipher.panel.Actions -- file-level staging hooks (§8.6 slice C)
 ---@field keymaps? table<string, string|string[]|false> -- resolved panel action -> lhs (§4.3)
+---@field extra_keymaps? dipher.panel.ExtraMap[] -- session maps (§8.2 pr viewed nav)
+---@field on_step? fun(direction: "next"|"prev", left: dipher.FileEntry|nil, new: dipher.FileEntry)
+
+---@class dipher.panel.ExtraMap
+---@field spec string|string[]|false  -- resolved lhs (a keymaps value)
+---@field fn fun()
+---@field desc string
 ---@field icons? boolean -- filetype devicons (default true when available)
 ---@field listing? "tree"|"name"
 ---@field position? "bottom"|"top"|"left"|"right"
@@ -132,6 +143,8 @@ function Panel.new(opts)
         root = opts.root,
         footer = opts.footer,
         actions = opts.actions,
+        extra_keymaps = opts.extra_keymaps,
+        on_step = opts.on_step,
         keymaps = vim.tbl_extend(
             "force",
             require("dipher.config").defaults.keymaps,
@@ -595,11 +608,55 @@ function Panel:goto_file(direction, keep_focus, wrap)
     if not i then
         return
     end
+    -- the file being left, for an optional session step hook (the pr forward-auto-mark)
+    local left = self.meta[from] and self.meta[from].kind == "file" and self.meta[from].entry or nil
     self.selected_row = i
     if self:is_open() then
         vim.api.nvim_win_set_cursor(self.winid, { i, 0 })
     end
     self:_open(self.meta[i].entry, keep_focus)
+    if self.on_step then
+        self.on_step(direction, left, self.meta[i].entry)
+    end
+end
+
+-- the file selection's entry: the live cursor row when the sidebar is open, else the
+-- last opened row (so it works with the panel hidden). nil if neither is a file row
+---@return dipher.FileEntry|nil
+function Panel:current_entry()
+    local row = self:is_open() and vim.api.nvim_win_get_cursor(self.winid)[1] or self.selected_row
+    local m = row and self.meta[row]
+    return m and m.kind == "file" and m.entry or nil
+end
+
+-- jump the selection straight to `path`'s row and open it (arbitrary jump, vs
+-- goto_file's single step). drives `]u`/`[u` unviewed nav. returns whether it landed
+---@param path string -- repo-relative
+---@param keep_focus boolean|nil
+---@return boolean
+function Panel:goto_path(path, keep_focus)
+    for i, m in ipairs(self.meta) do
+        if m.kind == "file" and m.entry.path == path then
+            self.selected_row = i
+            if self:is_open() then
+                vim.api.nvim_win_set_cursor(self.winid, { i, 0 })
+            end
+            self:_open(m.entry, keep_focus)
+            return true
+        end
+    end
+    return false
+end
+
+-- repaint after a session mutates an entry in place (e.g. a viewed flip), holding the
+-- cursor line. lighter than refresh (no model reload) and works without staging actions
+function Panel:repaint()
+    if not self:is_open() then
+        return
+    end
+    local lnum = vim.api.nvim_win_get_cursor(self.winid)[1]
+    self:render()
+    self:_restore_cursor(lnum)
 end
 
 -- scroll the *diff view* a quarter page (the origin window, where the file renders),
@@ -765,6 +822,10 @@ function Panel:_setup_window()
         map(km.refresh, function()
             self:refresh()
         end, "refresh")
+    end
+    -- session-supplied maps the generic panel doesn't own (e.g. the pr viewed nav)
+    for _, m in ipairs(self.extra_keymaps or {}) do
+        map(m.spec, m.fn, m.desc)
     end
 end
 

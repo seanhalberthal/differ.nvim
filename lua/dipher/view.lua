@@ -78,6 +78,7 @@ local armed_view = nil
 ---@field staging dipher.view.Staging|nil  -- per-source capability (nil off-side)
 ---@field staged_hunks table<integer, boolean>  -- hunk index -> staged, for marking
 ---@field on_edit_unstage fun(path: string)|nil  -- frontend hook: unstage + re-source for edit-in-review
+---@field extra_keymaps dipher.panel.ExtraMap[]|nil  -- session-supplied buffer maps (pr unviewed nav)
 ---@field edit_win integer|nil  -- transient editable real-file window (edit-in-review, §8.1)
 ---@field id integer  -- per-view id, for the close-guard augroup name
 ---@field _suppress_close boolean  -- true while we close a diff window ourselves (relayout/teardown)
@@ -96,6 +97,7 @@ View.__index = View
 ---@field staging? dipher.view.Staging
 ---@field can_stage? boolean
 ---@field on_edit_unstage? fun(path: string)
+---@field extra_keymaps? dipher.panel.ExtraMap[]
 
 -- build a view for a model. buffers and data are created here; windows are not
 -- touched until :open(), so a View can be constructed headlessly for tests
@@ -121,6 +123,8 @@ function View.new(model, opts)
         can_stage = opts.can_stage or false,
         staging = opts.staging,
         on_edit_unstage = opts.on_edit_unstage,
+        -- session-supplied maps the generic diff surface doesn't own (pr unviewed nav)
+        extra_keymaps = opts.extra_keymaps,
         staged_hunks = {},
         id = next_id(),
         _suppress_close = false,
@@ -519,6 +523,9 @@ function View:_setup_window(winid, bufnr)
         bind(bufnr, km.unstage_all, function()
             self:unstage_all()
         end, "dipher: unstage all hunks")
+    end
+    for _, m in ipairs(self.extra_keymaps or {}) do
+        bind(bufnr, m.spec, m.fn, m.desc)
     end
 end
 

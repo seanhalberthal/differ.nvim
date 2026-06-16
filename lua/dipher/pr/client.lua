@@ -42,4 +42,18 @@ function M.get_file_versions(pr, path, cb)
     )
 end
 
+-- set_file_viewed result: {viewed_state} (VIEWED|DISMISSED|UNVIEWED). flips the
+-- github "Viewed" checkbox for `path` on the PR (§8.2)
+---@param pr { owner: string, repo: string, number: integer }
+---@param path string
+---@param viewed boolean
+---@param cb fun(err: table|nil, result: any)
+function M.set_file_viewed(pr, path, viewed, cb)
+    sidecar.request(
+        "set_file_viewed",
+        { owner = pr.owner, repo = pr.repo, number = pr.number, path = path, viewed = viewed },
+        cb
+    )
+end
+
 return M
