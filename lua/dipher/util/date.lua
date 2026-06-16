@@ -58,4 +58,32 @@ function M.format(epoch, opts)
     return os.date("%Y-%m-%d", epoch)
 end
 
+-- parse an RFC3339 / ISO-8601 timestamp to an epoch (local-time interpretation;
+-- the coarse relative buckets make the utc-vs-local offset never shift the unit).
+-- accepts a bare date too. nil on an unparseable string
+---@param ts string
+---@return integer|nil
+function M.parse_iso(ts)
+    if type(ts) ~= "string" then
+        return nil
+    end
+    local y, mo, d, h, mi, s = ts:match("^(%d+)%-(%d+)%-(%d+)[T ](%d+):(%d+):(%d+)")
+    if not y then
+        y, mo, d = ts:match("^(%d+)%-(%d+)%-(%d+)")
+        h, mi, s = 0, 0, 0
+    end
+    if not y then
+        return nil
+    end
+    return os.time({
+        year = tonumber(y),
+        month = tonumber(mo),
+        day = tonumber(d),
+        hour = tonumber(h),
+        min = tonumber(mi),
+        sec = tonumber(s),
+        isdst = false,
+    })
+end
+
 return M
