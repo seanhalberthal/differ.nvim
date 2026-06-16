@@ -143,14 +143,16 @@ local function paint_range(view, t)
     end
 end
 
--- a config-aware relative/absolute time formatter for the thread headers
+-- a config-aware relative/absolute time formatter for the thread headers. threads
+-- carry the HH:MM time alongside the date (a comment's time of day is useful context),
+-- so the absolute form is "YYYY-MM-DD HH:MM"
 ---@return fun(ts: string): string
 local function time_formatter()
     local date = require("dipher.util.date")
     local relative = require("dipher").get_config().relative_dates
     return function(ts)
         local epoch = date.parse_iso(ts)
-        return epoch and date.format(epoch, { relative = relative }) or (ts or "")
+        return epoch and date.format(epoch, { relative = relative, time = true }) or (ts or "")
     end
 end
 
@@ -205,6 +207,14 @@ function M.apply(session)
         return a.row < b.row
     end)
     session.thread_anchors = anchors
+    -- split shows the thread under the cursor in a float, not inline; keep it in sync
+    -- with the fresh anchors (state changes, file switch) or close it when the layout
+    -- has no float
+    if split then
+        M.sync_peek(session)
+    else
+        M.close_peek()
+    end
 end
 
 -- ── cursor actions (unit-tested where pure) ───────────────────────────────────────
@@ -245,12 +255,16 @@ function M.next_anchor(anchors, bufnr, row, direction)
 end
 
 -- flip the explicit collapse override for every thread in `anchor`'s group, to the
--- opposite of the group's current effective state, so one gc toggles a stacked group
--- together (§6.4). re-applying the overlay is the caller's job
+-- opposite of the group's current effective state, so one gc toggles a group together
+-- (§6.4). the default expanded baseline differs by layout: stacked expands the row the
+-- cursor peeks; split shows the float by default while the cursor is on the row. so gc
+-- collapses the inline box (stacked) or hides the float (split), and back. re-applying
+-- the overlay is the caller's job
 ---@param session table
 ---@param anchor table  -- { key, threads }
 function M.toggle_group(session, anchor)
-    local group_active = session.thread_active == anchor.key
+    local split = session.view and session.view.layout == "split"
+    local group_active = split or session.thread_active == anchor.key
     local target = not thread_collapsed(session, anchor.threads[1], group_active)
     session.thread_collapsed = session.thread_collapsed or {}
     for _, t in ipairs(anchor.threads) do
@@ -337,15 +351,155 @@ function M.refresh(session)
     end)
 end
 
--- cursor-expand (peek): when the cursor lands on a thread's anchor row, expand that
--- group and collapse the rest. only re-applies when the active anchor changes, so it's
--- cheap on plain cursor motion. no-op in split (markers don't expand inline)
+-- ── split peek float (§6.4) ───────────────────────────────────────────────────────
+-- split can't carry inline boxes without desyncing the columns, so the thread under
+-- the cursor reads in a floating popover instead. one reusable float per session,
+-- re-pointed as the cursor moves and closed when it leaves a thread row. it reuses the
+-- ui.thread builder and the dipherThread* groups, so it matches the stacked overlay
+
+local peek = { win = nil, buf = nil, key = nil }
+
+-- whether `group`'s float is collapsed (hidden) by an explicit gc override. the float
+-- shows by default while the cursor is on the row, so the baseline is group_active=true
+---@param session table
+---@param group table  -- { threads }
+---@return boolean
+local function peek_collapsed(session, group)
+    return thread_collapsed(session, group.threads[1], true)
+end
+
+-- close the peek float (keeping its scratch buffer for reuse)
+function M.close_peek()
+    if peek.win and vim.api.nvim_win_is_valid(peek.win) then
+        pcall(vim.api.nvim_win_close, peek.win, true)
+    end
+    peek.win, peek.key = nil, nil
+end
+
+-- the window currently displaying `bufnr` (the column the cursor is on, else any),
+-- so the float anchors to the right side even when apply runs off a callback
+---@param bufnr integer
+---@return integer|nil
+local function win_for_buf(bufnr)
+    if vim.api.nvim_win_get_buf(0) == bufnr then
+        return vim.api.nvim_get_current_win()
+    end
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_get_buf(w) == bufnr then
+            return w
+        end
+    end
+end
+
+-- flatten a group's built chunk rows into buffer lines + per-chunk highlight spans
+-- (the float needs real lines, not virt_lines). expanded, stacked oldest first
+---@param group table  -- { threads }
+---@param reltime fun(ts: string): string
+---@return string[], table[]
+local function peek_content(group, reltime)
+    local lines, hls = {}, {}
+    local function push(chunks)
+        local col, parts = 0, {}
+        for _, c in ipairs(chunks) do
+            parts[#parts + 1] = c[1]
+            local bytes = #c[1]
+            if c[2] and bytes > 0 then
+                hls[#hls + 1] = { row = #lines, col = col, end_col = col + bytes, hl = c[2] }
+            end
+            col = col + bytes
+        end
+        lines[#lines + 1] = table.concat(parts)
+    end
+    for i, t in ipairs(group.threads) do
+        if i > 1 then
+            push({ { "", "dipherThreadBody" } }) -- blank tinted row between stacked threads
+        end
+        for _, rowchunks in ipairs(thread_ui.build(t, { collapsed = false, reltime = reltime })) do
+            push(rowchunks)
+        end
+    end
+    return lines, hls
+end
+
+-- open (or re-point) the peek float over `group`'s anchor row. positions just below the
+-- line, in the column the thread sits on, non-focusable so the cursor never enters it
+---@param group table  -- { key, bufnr, row, threads }
+local function peek_open(group)
+    local host = win_for_buf(group.bufnr)
+    if not host then
+        return M.close_peek()
+    end
+    local lines, hls = peek_content(group, time_formatter())
+    if #lines == 0 then
+        return M.close_peek()
+    end
+    local width = 1
+    for _, l in ipairs(lines) do
+        width = math.max(width, vim.api.nvim_strwidth(l))
+    end
+
+    if not (peek.buf and vim.api.nvim_buf_is_valid(peek.buf)) then
+        peek.buf = vim.api.nvim_create_buf(false, true)
+    end
+    vim.bo[peek.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(peek.buf, 0, -1, false, lines)
+    vim.bo[peek.buf].modifiable = false
+    vim.api.nvim_buf_clear_namespace(peek.buf, namespace(), 0, -1)
+    for _, h in ipairs(hls) do
+        vim.api.nvim_buf_set_extmark(peek.buf, namespace(), h.row, h.col, {
+            end_col = h.end_col,
+            hl_group = h.hl,
+        })
+    end
+
+    local cfg = {
+        relative = "win",
+        win = host,
+        bufpos = { group.row - 1, 0 },
+        row = 1,
+        col = 0,
+        width = width,
+        height = #lines,
+        style = "minimal",
+        border = "rounded",
+        focusable = false,
+        noautocmd = true,
+        zindex = 50,
+    }
+    if peek.win and vim.api.nvim_win_is_valid(peek.win) then
+        vim.api.nvim_win_set_config(peek.win, cfg)
+    else
+        peek.win = vim.api.nvim_open_win(peek.buf, false, cfg)
+        vim.wo[peek.win].winhl = "Normal:dipherThreadBody,FloatBorder:dipherThread"
+        vim.wo[peek.win].wrap = false
+    end
+    peek.key = group.key
+end
+
+-- re-render the open float against the current anchors after an apply (resolve state
+-- change, file switch): re-point if its group still exists, else close it
+---@param session table
+function M.sync_peek(session)
+    if not (peek.win and vim.api.nvim_win_is_valid(peek.win) and peek.key) then
+        return
+    end
+    for _, a in ipairs(session.thread_anchors or {}) do
+        if a.key == peek.key then
+            if peek_collapsed(session, a) then
+                return M.close_peek() -- gc hid it; honour the override
+            end
+            return peek_open(a)
+        end
+    end
+    M.close_peek()
+end
+
+-- cursor-driven peek. stacked: expand the thread under the cursor inline and collapse
+-- the rest (re-apply only when the active anchor changes, so plain motion stays cheap).
+-- split: open the float over the thread under the cursor, closing it off a thread row
 ---@param session table
 function M.on_cursor(session)
     if not (session and session.view and session.view.columns) then
-        return
-    end
-    if session.view.layout == "split" then
         return
     end
     local win = vim.api.nvim_get_current_win()
@@ -354,6 +508,22 @@ function M.on_cursor(session)
     for _, col in ipairs(session.view.columns) do
         in_diff = in_diff or col.bufnr == buf
     end
+
+    if session.view.layout == "split" then
+        if not in_diff then
+            return M.close_peek() -- focus left the diff; drop the float
+        end
+        local row = vim.api.nvim_win_get_cursor(win)[1]
+        local group = M.anchor_at(session, buf, row)
+        if not group or peek_collapsed(session, group) then
+            return M.close_peek() -- off a thread row, or gc hid this one
+        end
+        if peek.key ~= group.key or not (peek.win and vim.api.nvim_win_is_valid(peek.win)) then
+            peek_open(group)
+        end
+        return
+    end
+
     if not in_diff then
         return -- focus is in the panel or elsewhere; leave the overlay as is
     end

@@ -46,16 +46,17 @@ function M.relative(epoch, now)
 end
 
 -- format an author epoch per config: relative when `opts.relative`, else the
--- absolute YYYY-MM-DD (in local time). `opts.now` overrides the relative baseline
+-- absolute YYYY-MM-DD (in local time), with the HH:MM time appended when `opts.time`.
+-- `opts.now` overrides the relative baseline
 ---@param epoch integer
----@param opts { relative?: boolean, now?: integer }|nil
+---@param opts { relative?: boolean, time?: boolean, now?: integer }|nil
 ---@return string
 function M.format(epoch, opts)
     opts = opts or {}
     if opts.relative then
         return M.relative(epoch, opts.now)
     end
-    return os.date("%Y-%m-%d", epoch)
+    return os.date(opts.time and "%Y-%m-%d %H:%M" or "%Y-%m-%d", epoch)
 end
 
 -- parse an RFC3339 / ISO-8601 timestamp to an epoch (local-time interpretation;

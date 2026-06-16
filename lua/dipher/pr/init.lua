@@ -294,7 +294,7 @@ end
 
 -- gc: collapse/expand the thread group under the cursor (§6.4). an explicit toggle
 -- overrides the cursor-peek default until toggled back; re-apply swaps the boxes in
--- place. inert in split (markers don't expand inline) and a no-op off a thread row
+-- place (stacked) or shows/hides the float (split), and a no-op off a thread row
 function M.toggle_thread()
     local anchor = cursor_anchor()
     if not anchor then
@@ -303,6 +303,7 @@ function M.toggle_thread()
     local threads = require("dipher.pr.threads")
     threads.toggle_group(session, anchor)
     threads.apply(session)
+    threads.on_cursor(session) -- reopen/close the split float to match the new state
 end
 
 -- ]t/[t: move the cursor to the next/prev thread anchor in the current diff column,
@@ -476,6 +477,7 @@ local function open_session(pr, detail)
             show_file(entry)
         end,
         on_close = function()
+            require("dipher.pr.threads").close_peek() -- drop the split peek float, if open
             if session and session.view and session.view:is_open() then
                 session.view:close()
             end

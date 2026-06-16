@@ -43,4 +43,16 @@ describe("util.date.format", function()
     it("defaults to absolute with no opts", function()
         assert.is_truthy(date.format(NOW):match("^%d%d%d%d%-%d%d%-%d%d$"))
     end)
+
+    it("appends HH:MM when opts.time is set", function()
+        local s = date.format(NOW, { time = true })
+        assert.is_truthy(s:match("^%d%d%d%d%-%d%d%-%d%d %d%d:%d%d$"))
+    end)
+
+    it("ignores opts.time in the relative form", function()
+        assert.are.equal(
+            "1 day ago",
+            date.format(NOW - DAY, { relative = true, time = true, now = NOW })
+        )
+    end)
 end)
