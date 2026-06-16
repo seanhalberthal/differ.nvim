@@ -76,8 +76,8 @@ end
 
 -- :Dipher pr [number|owner/repo#number|list [filter]] (§8.2). no arg or a bare
 -- number opens the picker / that PR; `owner/repo#number` targets a specific repo
--- (forks, §1); `list [filter]` opens the picker with a filter. the review/submit/…
--- sub-verbs arrive in later slices
+-- (forks, §1); `list [filter]` opens the picker with a filter; `resolve` toggles the
+-- review thread under the cursor (§6.4). the review/submit/… sub-verbs arrive later
 ---@param verb string|nil
 ---@param arg string|nil
 function M.pr(verb, arg)
@@ -93,6 +93,10 @@ function M.pr(verb, arg)
     local dispatch = {
         list = function()
             pr.open({ filter = arg or "open" })
+        end,
+        -- cursor-context: resolve/unresolve the thread under the cursor in the diff (§6.4)
+        resolve = function()
+            pr.resolve()
         end,
     }
     local h = dispatch[verb]
@@ -197,6 +201,7 @@ local VALUES = {
     -- later slices implement these sub-verbs; listing now keeps completion stable
     pr = {
         "list",
+        "resolve",
         "review",
         "submit",
         "discard",

@@ -199,12 +199,63 @@ function M.apply(session)
         else
             M.apply_box(session, view, g, reltime)
         end
-        anchors[#anchors + 1] = { key = g.key, bufnr = g.bufnr, row = g.row }
+        anchors[#anchors + 1] = { key = g.key, bufnr = g.bufnr, row = g.row, threads = g.threads }
     end
     table.sort(anchors, function(a, b)
         return a.row < b.row
     end)
     session.thread_anchors = anchors
+end
+
+-- ── cursor actions (unit-tested where pure) ───────────────────────────────────────
+
+-- the anchor group on (bufnr, row), or nil. the cursor actions (toggle / resolve) use
+-- it to find the thread(s) on the line. pure over the recorded anchor list
+---@param session table
+---@param bufnr integer
+---@param row integer
+---@return table|nil  -- { key, bufnr, row, threads }
+function M.anchor_at(session, bufnr, row)
+    for _, a in ipairs(session.thread_anchors or {}) do
+        if a.bufnr == bufnr and a.row == row then
+            return a
+        end
+    end
+end
+
+-- the next/prev anchored row for `bufnr` strictly past `row` (no wrap). pure over the
+-- anchor list so ]t/[t nav is unit-tested; nil when none remain that direction
+---@param anchors table[]  -- { bufnr, row } list, any order
+---@param bufnr integer
+---@param row integer
+---@param direction "next"|"prev"
+---@return integer|nil
+function M.next_anchor(anchors, bufnr, row, direction)
+    local best
+    for _, a in ipairs(anchors or {}) do
+        if a.bufnr == bufnr then
+            if direction == "next" and a.row > row and (not best or a.row < best) then
+                best = a.row
+            elseif direction == "prev" and a.row < row and (not best or a.row > best) then
+                best = a.row
+            end
+        end
+    end
+    return best
+end
+
+-- flip the explicit collapse override for every thread in `anchor`'s group, to the
+-- opposite of the group's current effective state, so one gc toggles a stacked group
+-- together (§6.4). re-applying the overlay is the caller's job
+---@param session table
+---@param anchor table  -- { key, threads }
+function M.toggle_group(session, anchor)
+    local group_active = session.thread_active == anchor.key
+    local target = not thread_collapsed(session, anchor.threads[1], group_active)
+    session.thread_collapsed = session.thread_collapsed or {}
+    for _, t in ipairs(anchor.threads) do
+        session.thread_collapsed[t.thread_id] = target
+    end
 end
 
 -- split: a quiet marker at the end of the anchor line, coloured by the group's state

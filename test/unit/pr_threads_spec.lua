@@ -51,3 +51,48 @@ describe("pr.threads.stack_sort", function()
         assert.are.equal(empty, sorted[1])
     end)
 end)
+
+describe("pr.threads.anchor_at", function()
+    local session = {
+        thread_anchors = {
+            { key = "1:3", bufnr = 1, row = 3, threads = { "a" } },
+            { key = "1:8", bufnr = 1, row = 8, threads = { "b" } },
+            { key = "2:3", bufnr = 2, row = 3, threads = { "c" } },
+        },
+    }
+
+    it("matches on bufnr and row together", function()
+        assert.are.equal("1:3", threads.anchor_at(session, 1, 3).key)
+        assert.are.equal("2:3", threads.anchor_at(session, 2, 3).key) -- same row, other column
+    end)
+
+    it("returns nil off a thread row", function()
+        assert.is_nil(threads.anchor_at(session, 1, 5))
+        assert.is_nil(threads.anchor_at({}, 1, 3))
+    end)
+end)
+
+describe("pr.threads.next_anchor", function()
+    -- rows 3, 8 on buffer 1; row 3 on buffer 2 (a split column)
+    local anchors = {
+        { bufnr = 1, row = 8 },
+        { bufnr = 1, row = 3 },
+        { bufnr = 2, row = 3 },
+    }
+
+    it("finds the nearest anchor past the cursor in the same column", function()
+        assert.are.equal(8, threads.next_anchor(anchors, 1, 5, "next"))
+        assert.are.equal(3, threads.next_anchor(anchors, 1, 5, "prev"))
+    end)
+
+    it("skips anchors on a different column buffer", function()
+        assert.is_nil(threads.next_anchor(anchors, 2, 5, "next"))
+        assert.are.equal(3, threads.next_anchor(anchors, 2, 5, "prev"))
+    end)
+
+    it("does not wrap; nil when none remain that direction", function()
+        assert.is_nil(threads.next_anchor(anchors, 1, 8, "next"))
+        assert.is_nil(threads.next_anchor(anchors, 1, 3, "prev"))
+        assert.is_nil(threads.next_anchor({}, 1, 1, "next"))
+    end)
+end)

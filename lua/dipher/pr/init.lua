@@ -279,6 +279,100 @@ local function on_step(direction, left)
     end
 end
 
+-- the thread anchor group under the cursor in the diff, or nil. all four thread
+-- actions key off the cursor row, so they read the same way from a keymap or a script
+---@return table|nil  -- { key, bufnr, row, threads }
+local function cursor_anchor()
+    if not (session and session.view and session.view:is_open()) then
+        return
+    end
+    local win = vim.api.nvim_get_current_win()
+    local buf = vim.api.nvim_win_get_buf(win)
+    local row = vim.api.nvim_win_get_cursor(win)[1]
+    return require("dipher.pr.threads").anchor_at(session, buf, row)
+end
+
+-- gc: collapse/expand the thread group under the cursor (§6.4). an explicit toggle
+-- overrides the cursor-peek default until toggled back; re-apply swaps the boxes in
+-- place. inert in split (markers don't expand inline) and a no-op off a thread row
+function M.toggle_thread()
+    local anchor = cursor_anchor()
+    if not anchor then
+        return notify("no review thread on this line")
+    end
+    local threads = require("dipher.pr.threads")
+    threads.toggle_group(session, anchor)
+    threads.apply(session)
+end
+
+-- ]t/[t: move the cursor to the next/prev thread anchor in the current diff column,
+-- scanning the overlay index rather than the map so thread blocks (virt_lines, not
+-- real rows) never enter ]c hunk motion. no wrap; notify when none remain
+---@param direction "next"|"prev"
+local function nav_thread(direction)
+    if not (session and session.view and session.view:is_open()) then
+        return
+    end
+    local win = vim.api.nvim_get_current_win()
+    local buf = vim.api.nvim_win_get_buf(win)
+    local row = vim.api.nvim_win_get_cursor(win)[1]
+    local target =
+        require("dipher.pr.threads").next_anchor(session.thread_anchors, buf, row, direction)
+    if not target then
+        return notify(direction == "next" and "no more threads" or "no previous threads")
+    end
+    vim.api.nvim_win_set_cursor(win, { target, 0 })
+end
+
+function M.next_thread()
+    nav_thread("next")
+end
+
+function M.prev_thread()
+    nav_thread("prev")
+end
+
+-- gr / :Dipher pr resolve: toggle the resolved state of the thread under the cursor.
+-- optimistic — flip + re-apply (highlight swap) immediately, then reconcile to the
+-- server's returned state, rolling back + flagging on error (§11). one line can stack
+-- several threads, so it acts on the first open one (else the first, to unresolve);
+-- the sidecar flushes its thread cache after the mutation (§7.5)
+function M.resolve()
+    local anchor = cursor_anchor()
+    if not anchor then
+        return notify("no review thread on this line")
+    end
+    local target
+    for _, t in ipairs(anchor.threads) do
+        if not t.resolved then
+            target = t
+            break
+        end
+    end
+    target = target or anchor.threads[1]
+    if target.is_pending or not target.thread_id then
+        return notify("this thread can't be resolved yet")
+    end
+    local threads = require("dipher.pr.threads")
+    local new_state = not target.resolved
+    target.resolved = new_state
+    threads.apply(session)
+    client.resolve_thread(session.pr, target.thread_id, new_state, function(err, res)
+        if not (session and session.view and session.view:is_open()) then
+            return -- session torn down while the mutation was in flight
+        end
+        if err then
+            target.resolved = not new_state
+            threads.apply(session)
+            return notify_err(err)
+        end
+        if res and res.resolved ~= nil and res.resolved ~= target.resolved then
+            target.resolved = res.resolved
+            threads.apply(session)
+        end
+    end)
+end
+
 -- open the session tab + file panel for a fetched PR and land on the first file
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param detail table  -- get_pr result
@@ -343,7 +437,8 @@ local function open_session(pr, detail)
             desc = "previous unviewed file",
         },
     }
-    -- the diff surface keeps focus in the diff window when stepping (keep_focus = true)
+    -- the diff surface keeps focus in the diff window when stepping (keep_focus = true);
+    -- the thread actions (§6.4) also bind here, via the same extra_keymaps seam
     session.diff_extra_keymaps = {
         {
             spec = diff_km.next_unviewed,
@@ -359,6 +454,10 @@ local function open_session(pr, detail)
             end,
             desc = "previous unviewed file",
         },
+        { spec = diff_km.next_thread, fn = M.next_thread, desc = "next review thread" },
+        { spec = diff_km.prev_thread, fn = M.prev_thread, desc = "previous review thread" },
+        { spec = diff_km.toggle_thread, fn = M.toggle_thread, desc = "toggle thread" },
+        { spec = diff_km.resolve_thread, fn = M.resolve, desc = "resolve thread" },
     }
 
     local panel = Panel.new({

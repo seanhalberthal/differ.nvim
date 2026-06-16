@@ -62,6 +62,14 @@ M.defaults = {
         toggle_viewed = "<Tab>", -- pr panel: flip the github viewed checkbox
         next_unviewed = "]u", -- pr panel + diff: jump to the next/prev unviewed file
         prev_unviewed = "[u",
+        next_thread = "]t", -- pr diff: jump to the next/prev review-thread anchor
+        prev_thread = "[t",
+        -- both buffer-local to the read-only pr diff, so the g-family shadowing is
+        -- deliberate and inert: gc = native comment op (no source to toggle), gr =
+        -- native lsp prefix (no lsp on a synthetic diff buffer)
+        toggle_thread = "gc", -- pr diff: collapse/expand the thread under the cursor
+        resolve_thread = "gr", -- pr diff: resolve/unresolve the thread under the cursor
+        -- comment/reply (ga/gp) land in slice 4
         scroll_down = "f", -- all three (shadows native f/b; set false to restore)
         scroll_up = "b",
         select = { "<CR>", "o" }, -- panel, history
