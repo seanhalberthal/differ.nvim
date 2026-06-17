@@ -1,12 +1,15 @@
 -- the merge-tool session (§8.5): lay the 3-way render into windows — ours / theirs on
--- top (plus base under the diff3_mixed layout), the result spine full-width below — and
--- drive conflict navigation. read-only in this slice; slice 3 makes the result the real
--- editable worktree file and adds per-hunk resolution + the write/stage exit.
+-- top (plus base under the diff3_mixed layout), the result spine full-width below — drive
+-- conflict navigation (]x/[x), and resolve per conflict (take ours/theirs/both/base/none),
+-- splicing the chosen slab into the result and stripping the markers. the result column is
+-- the real worktree file: :w writes it and auto-stages once no markers remain.
 --
--- each column is a real source file, so windows use native `number` + native syntax;
--- conflict regions are extmark-only in the dipher.merge namespace (no buffer/text touch)
+-- each input column is a read-only scratch buffer of a whole stage file, so windows use
+-- native `number` + native syntax; conflict regions are extmark-only in the dipher.merge
+-- namespace (no buffer/text touch on the inputs)
 
 local set_local = require("dipher.util.win").set_local
+local bind = require("dipher.util.keymap").bind
 
 local M = {}
 
@@ -23,10 +26,10 @@ local REGION_HL = {
 ---@class dipher.MergeSession
 ---@field root string
 ---@field path string
----@field regions dipher.merge.Region[]   -- the model's regions (result_start anchors)
+---@field regions dipher.merge.Region[]   -- re-derived from the live result buffer
 ---@field result_win integer
----@field result_buf integer
----@field bufs integer[]
+---@field result_buf integer              -- the real worktree file (editable)
+---@field bufs integer[]                  -- the scratch input buffers (deleted on close)
 ---@field return_tab integer
 ---@field session_tab integer
 
@@ -125,6 +128,84 @@ local function goto_conflict(dir)
     end
 end
 
+-- the conflict regions of the live result buffer (re-parsed each call, so hand edits and
+-- keymap splices stay consistent), plus the buffer's current lines
+---@return dipher.merge.Region[], string[]
+local function live_regions()
+    local lines = vim.api.nvim_buf_get_lines(session.result_buf, 0, -1, false)
+    return require("dipher.git.conflict").parse(lines), lines
+end
+
+-- re-parse the result buffer and repaint its conflict-block backgrounds, caching the
+-- regions on the session for navigation
+local function repaint_result()
+    local regions = live_regions()
+    session.regions = regions
+    vim.api.nvim_buf_clear_namespace(session.result_buf, merge_ns, 0, -1)
+    local marks = {}
+    for _, r in ipairs(regions) do
+        marks[#marks + 1] = { index = r.index, first = r.result_start, last = r.result_end }
+    end
+    paint(session.result_buf, marks, REGION_HL.result)
+end
+
+-- the conflict at the cursor, else the first one at or below it (so a take-this from just
+-- above a block still resolves it)
+---@param regions dipher.merge.Region[]
+---@param lnum integer
+---@return dipher.merge.Region|nil
+local function region_at(regions, lnum)
+    for _, r in ipairs(regions) do
+        if lnum >= r.result_start and lnum <= r.result_end then
+            return r
+        end
+    end
+    for _, r in ipairs(regions) do
+        if r.result_start >= lnum then
+            return r
+        end
+    end
+    return nil
+end
+
+-- resolve the conflict under the cursor by splicing in the chosen slab, then re-derive +
+-- repaint and advance to the next remaining conflict (§8.5)
+---@param choice "ours"|"theirs"|"both"|"base"|"none"
+local function resolve_choice(choice)
+    if not session then
+        return
+    end
+    local regions, lines = live_regions()
+    if #regions == 0 then
+        return notify("no conflicts remain")
+    end
+    local cur = vim.api.nvim_win_get_cursor(session.result_win)[1]
+    local region = region_at(regions, cur)
+    if not region then
+        return notify("no conflict under the cursor")
+    end
+    local new_lines = require("dipher.merge.resolve").splice(lines, region, choice)
+    if not new_lines then
+        return notify("no base version in this conflict", vim.log.levels.WARN)
+    end
+    local anchor = region.result_start
+    vim.bo[session.result_buf].modifiable = true
+    vim.api.nvim_buf_set_lines(session.result_buf, 0, -1, false, new_lines)
+    repaint_result()
+    -- land on the next remaining conflict at or after where this one was
+    local target
+    for _, r in ipairs(session.regions) do
+        if r.result_start >= anchor then
+            target = target or r.result_start
+        end
+    end
+    if target then
+        vim.api.nvim_win_set_cursor(session.result_win, { target, 0 })
+    elseif #session.regions == 0 then
+        notify("all conflicts resolved — :w to save and stage")
+    end
+end
+
 -- end the session: drop the tab + buffers and return to the invoking tab
 function M.close()
     if not session then
@@ -170,16 +251,21 @@ local function lay_out(root, relpath, model, layout)
     local result_win = vim.api.nvim_get_current_win()
     vim.api.nvim_set_current_win(top)
 
-    local bufs, result_buf = {}, nil
+    local abs = root .. "/" .. relpath
+    local bufs, result_buf = {}, nil -- bufs: the scratch input buffers (deleted on close)
     local input_wins = {}
     for i, col in ipairs(result.columns) do
-        local buf = make_buffer(col.side, relpath, col.lines)
-        bufs[#bufs + 1] = buf
         if i == result.result_index then
-            result_buf = buf
-            vim.api.nvim_win_set_buf(result_win, buf)
-            paint(buf, col.regions, REGION_HL.result)
+            -- the result is the REAL worktree file: editable, native syntax/undo/LSP, and
+            -- :w writes it for real (BufWritePost stages it once it's marker-free)
+            vim.api.nvim_win_call(result_win, function()
+                vim.cmd.edit(vim.fn.fnameescape(abs))
+            end)
+            result_buf = vim.api.nvim_win_get_buf(result_win)
+            paint(result_buf, col.regions, REGION_HL.result)
         else
+            local buf = make_buffer(col.side, relpath, col.lines)
+            bufs[#bufs + 1] = buf
             local win
             if #input_wins == 0 then
                 win = top
@@ -210,18 +296,61 @@ local function lay_out(root, relpath, model, layout)
         session_tab = session_tab,
     }
 
-    -- conflict nav + quit live on the result buffer (the working surface). slice 3 moves
-    -- these onto the configurable keymaps table and adds the resolution gestures
-    local function map(lhs, fn, desc)
-        vim.keymap.set("n", lhs, fn, { buffer = result_buf, silent = true, desc = desc })
+    -- nav + take-this resolution live on the result buffer (the working surface), from
+    -- the configurable merge keymaps (§4.3); falls back to the flat defaults when setup
+    -- wasn't called, like the diff view does
+    local cfg = require("dipher").get_config()
+    local km = cfg.keymaps.merge or require("dipher.config").defaults.keymaps
+    local function rb(action, fn, desc)
+        bind(result_buf, km[action], fn, desc)
     end
-    map("]x", function()
+    rb("next_conflict", function()
         goto_conflict("next")
     end, "dipher: next conflict")
-    map("[x", function()
+    rb("prev_conflict", function()
         goto_conflict("prev")
     end, "dipher: previous conflict")
-    map("q", M.close, "dipher: close the merge tool")
+    rb("choose_ours", function()
+        resolve_choice("ours")
+    end, "dipher: take ours")
+    rb("choose_theirs", function()
+        resolve_choice("theirs")
+    end, "dipher: take theirs")
+    rb("choose_base", function()
+        resolve_choice("base")
+    end, "dipher: take base")
+    rb("choose_all", function()
+        resolve_choice("both")
+    end, "dipher: take both")
+    rb("choose_none", function()
+        resolve_choice("none")
+    end, "dipher: drop the conflict")
+    -- q closes the tool (conventional, no config action)
+    vim.keymap.set(
+        "n",
+        "q",
+        M.close,
+        { buffer = result_buf, silent = true, desc = "dipher: close" }
+    )
+
+    -- :w writes the real file; once no markers remain it auto-stages (git add = resolve),
+    -- otherwise it just reports what's left. repaint so a hand-edit's regions stay current
+    vim.api.nvim_create_autocmd("BufWritePost", {
+        buffer = result_buf,
+        group = vim.api.nvim_create_augroup("dipher.merge." .. result_buf, { clear = true }),
+        callback = function()
+            if not session then
+                return
+            end
+            repaint_result()
+            if #session.regions == 0 then
+                require("dipher.git").stage(session.root, session.path)
+                notify(session.path .. " resolved and staged")
+            else
+                notify(("%d conflict(s) still unresolved — not staged"):format(#session.regions))
+            end
+        end,
+    })
 
     -- land in the result on the first conflict, columns scroll-bound to it
     vim.api.nvim_set_current_win(result_win)

@@ -24,8 +24,8 @@ local M = {}
 
 -- the surfaces that bind buffer-local maps; each takes the shared defaults plus its
 -- own `keymaps.<surface>` override subtable
-local SURFACES = { "diff", "panel", "history" }
-local SURFACE_SET = { diff = true, panel = true, history = true }
+local SURFACES = { "diff", "panel", "history", "merge" }
+local SURFACE_SET = { diff = true, panel = true, history = true, merge = true }
 
 ---@type dipher.Config
 M.defaults = {
@@ -94,6 +94,15 @@ M.defaults = {
         discard = "X", -- panel
         refresh = "R",
         toggle_fold = "za", -- history (range mode)
+        -- merge tool (§8.5), bound on the result buffer. nav + take-this resolution,
+        -- mirroring diffview's conflict keys
+        next_conflict = "]x", -- merge: jump to the next/prev conflict
+        prev_conflict = "[x",
+        choose_ours = "<leader>co", -- merge: take ours / theirs / base for the conflict
+        choose_theirs = "<leader>ct",
+        choose_base = "<leader>cb",
+        choose_all = "<leader>ca", -- take both (ours then theirs)
+        choose_none = "dx", -- drop the conflict region
     },
     -- show dates as relative ("3 days ago") instead of YYYY-MM-DD wherever the
     -- plugin renders one (the history panel today, more surfaces later)

@@ -108,3 +108,77 @@ describe(":Dipher mergetool", function()
         assert.is_nil(merge.current())
     end)
 end)
+
+-- fire a buffer-local keymap by its description, so the test doesn't depend on <leader>
+local function fire(buf, desc)
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+        if m.desc == desc and m.callback then
+            m.callback()
+            return true
+        end
+    end
+    return false
+end
+
+local function has_marker(buf)
+    for _, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+        if l:sub(1, 7) == "<<<<<<<" then
+            return true
+        end
+    end
+    return false
+end
+
+describe(":Dipher mergetool resolution", function()
+    after_each(function()
+        if merge.current() then
+            merge.close()
+        end
+    end)
+
+    it("takes ours for the conflict under the cursor, stripping the markers", function()
+        local root = conflict_repo()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+        assert.is_true(fire(s.result_buf, "dipher: take ours"))
+        assert.is_false(has_marker(s.result_buf))
+        assert.are.same(
+            { "a", "OURS", "c" },
+            vim.api.nvim_buf_get_lines(s.result_buf, 0, -1, false)
+        )
+    end)
+
+    it("takes both in ours-then-theirs order", function()
+        local root = conflict_repo()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+        fire(s.result_buf, "dipher: take both")
+        assert.are.same(
+            { "a", "OURS", "THEIRS", "c" },
+            vim.api.nvim_buf_get_lines(s.result_buf, 0, -1, false)
+        )
+    end)
+
+    it("writes and stages once the file is marker-free", function()
+        local root = conflict_repo()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+        fire(s.result_buf, "dipher: take ours")
+        vim.api.nvim_set_current_win(s.result_win)
+        vim.cmd("write")
+        assert.are.same({}, require("dipher.git").conflicted(root))
+    end)
+
+    it("does not stage while conflicts remain on write", function()
+        local root = conflict_repo()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+        vim.api.nvim_set_current_win(s.result_win)
+        vim.cmd("write") -- markers still present
+        assert.are.same({ "f.txt" }, require("dipher.git").conflicted(root))
+    end)
+end)
