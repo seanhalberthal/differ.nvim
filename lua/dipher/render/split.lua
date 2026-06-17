@@ -11,6 +11,7 @@
 local LineMap = require("dipher.render.linemap")
 local text_util = require("dipher.util.text")
 local spans = require("dipher.worddiff.spans")
+local pair = require("dipher.worddiff.pair")
 local walk = require("dipher.render.walk")
 
 local M = {}
@@ -65,6 +66,7 @@ function M.render(model, opts)
     local context = opts.context or 3
     local deep = opts.deep_diff or {}
     local deep_on = deep.enabled ~= false
+    local threshold = deep.similarity_threshold or 0.5
     local mode = deep.granularity or "word"
 
     -- context lines are identical on both sides, so old_all supplies their text
@@ -80,33 +82,65 @@ function M.render(model, opts)
             )
             mark(foldable)
         end,
-        -- side-by-side aligns old[i] with new[i] positionally and pads the shorter
-        -- side with filler. word spans are computed per positionally-paired row;
-        -- similarity-based pairing is a deferred refinement (spec §6.3 / §11)
+        -- side-by-side aligns old/new on similarity-matched anchor rows so an
+        -- inserted or deleted line opens filler at its real position instead of
+        -- shifting every row below it out of register. anchors split the hunk into
+        -- change segments; within a segment the leftover deletions and insertions
+        -- align row-by-row (substitution) and the shorter side pads with filler
         hunk = function(h, hi)
-            local rows = math.max(h.old_count, h.new_count)
-            for i = 1, rows do
-                local has_old = i <= h.old_count
-                local has_new = i <= h.new_count
+            local pairs_ = pair.pair(h.old_lines, h.new_lines, threshold)
+            local mate = {}
+            for _, p in ipairs(pairs_) do
+                if p.old and p.new then
+                    mate[p.old] = p.new
+                end
+            end
+
+            -- push one row carrying an old line, a new line, or both (with spans)
+            local function row(oi, ni)
                 local lspan, rspan
-                if deep_on and has_old and has_new then
-                    local s = spans.emit(h.old_lines[i], h.new_lines[i], mode)
+                if deep_on and oi and ni then
+                    local s = spans.emit(h.old_lines[oi], h.new_lines[ni], mode)
                     lspan, rspan = s.old, s.new
                 end
-                local lrail = has_old
-                        and { kind = "old", old = h.old_start + i - 1, hunk = hi, spans = lspan }
+                local lrail = oi
+                        and { kind = "old", old = h.old_start + oi - 1, hunk = hi, spans = lspan }
                     or { kind = "meta" }
-                local rrail = has_new
-                        and { kind = "new", new = h.new_start + i - 1, hunk = hi, spans = rspan }
+                local rrail = ni
+                        and { kind = "new", new = h.new_start + ni - 1, hunk = hi, spans = rspan }
                     or { kind = "meta" }
-                push_row(
-                    has_old and h.old_lines[i] or nil,
-                    lrail,
-                    has_new and h.new_lines[i] or nil,
-                    rrail
-                )
+                push_row(oi and h.old_lines[oi] or nil, lrail, ni and h.new_lines[ni] or nil, rrail)
                 mark(false)
             end
+
+            -- align a change segment's deletions against its insertions, padding
+            -- the shorter side with filler rows
+            local function flush(dels, inss)
+                for k = 1, math.max(#dels, #inss) do
+                    row(dels[k], inss[k])
+                end
+            end
+
+            local no = 1
+            local dels, inss = {}, {}
+            for oi = 1, h.old_count do
+                local ni = mate[oi]
+                if ni then
+                    for k = no, ni - 1 do
+                        inss[#inss + 1] = k
+                    end
+                    flush(dels, inss)
+                    dels, inss = {}, {}
+                    row(oi, ni)
+                    no = ni + 1
+                else
+                    dels[#dels + 1] = oi
+                end
+            end
+            for k = no, h.new_count do
+                inss[#inss + 1] = k
+            end
+            flush(dels, inss)
         end,
     })
     if fold_start then

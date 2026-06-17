@@ -123,6 +123,50 @@ describe("render.split unequal hunks pad with filler", function()
     end)
 end)
 
+describe("render.split similarity alignment", function()
+    -- an inserted line in the middle of a hunk must open filler at its own row, not
+    -- shift the rows below it out of register and noise up their word spans
+    local model = {
+        path = "x",
+        old_rev = "A",
+        new_rev = "B",
+        old_text = "p`,\nID\n, P)\n",
+        new_text = "p,\nt`,\nID\n, P, T)\n",
+        hunks = {
+            {
+                old_start = 1,
+                old_count = 3,
+                new_start = 1,
+                new_count = 4,
+                old_lines = { "p`,", "ID", ", P)" },
+                new_lines = { "p,", "t`,", "ID", ", P, T)" },
+            },
+        },
+    }
+
+    it("opens filler at the inserted line, keeping later rows aligned", function()
+        local r = render(model, { context = FULL })
+        assert.are.same({ "p`,", "", "ID", ", P)" }, r.old_lines)
+        assert.are.same({ "p,", "t`,", "ID", ", P, T)" }, r.new_lines)
+        assert.are.equal(#r.old_lines, #r.new_lines)
+    end)
+
+    it("makes the inserted row a left filler, not a positional substitution", function()
+        local r = render(model, { context = FULL })
+        assert.are.same({ "old", "meta", "old", "old" }, kinds(r.old_map))
+        assert.are.same({ "new", "new", "new", "new" }, kinds(r.new_map))
+        assert.is_nil(r.old_map.lines[2].old)
+        assert.are.equal(2, r.new_map.lines[2].new)
+    end)
+
+    it("diffs the identical ID rows against each other, not against the insertion", function()
+        local r = render(model, { context = FULL, deep_diff = { enabled = true } })
+        -- old[2] (ID) pairs with new[3] (ID): identical, so no word spans
+        assert.are.same({}, r.old_map.lines[3].spans)
+        assert.are.same({}, r.new_map.lines[3].spans)
+    end)
+end)
+
 describe("render.split word-level spans", function()
     it("attaches spans to both sides of a positionally paired row", function()
         local model = {
