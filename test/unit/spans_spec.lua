@@ -27,6 +27,20 @@ describe("worddiff.spans.emit (word)", function()
         assert.are.same({ { col_start = 0, col_end = 2 } }, s.new)
     end)
 
+    it("ignores a whitespace-only change (gofmt realignment)", function()
+        -- field name and type are identical; only the alignment padding widened
+        local s = spans.emit("ctx     context.Context", "ctx       context.Context", "word")
+        assert.are.same({}, s.old)
+        assert.are.same({}, s.new)
+    end)
+
+    it("drops an isolated realignment gap but keeps the real change", function()
+        -- the widened gap before '=' is alignment churn; only the type token changed
+        local s = spans.emit("foo = string", "foo    = transcript", "word")
+        assert.are.same({ { col_start = 6, col_end = 12 } }, s.old)
+        assert.are.same({ { col_start = 9, col_end = 19 } }, s.new)
+    end)
+
     it("keeps changes either side of an unchanged token separate", function()
         -- "a X b" -> "Z X Y": 'a'->'Z' and 'b'->'Y', the middle " X " survives
         local s = spans.emit("a X b", "Z X Y", "word")

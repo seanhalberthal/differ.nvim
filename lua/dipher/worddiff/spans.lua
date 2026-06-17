@@ -64,12 +64,19 @@ local function spans_from(tokens, keep)
         if not keep[i] then
             local col_start = tokens[i].col_start
             local col_end = tokens[i].col_end
+            local has_content = tokens[i].text:match("%S") ~= nil
             local j = i + 1
             while j <= n and not keep[j] do
                 col_end = tokens[j].col_end
+                has_content = has_content or tokens[j].text:match("%S") ~= nil
                 j = j + 1
             end
-            out[#out + 1] = { col_start = col_start, col_end = col_end }
+            -- a purely-whitespace run is alignment churn (e.g. gofmt re-padding a
+            -- struct), not a real edit; pairing already ignores whitespace, so drop
+            -- it here too rather than lighting up the gap on unchanged lines
+            if has_content then
+                out[#out + 1] = { col_start = col_start, col_end = col_end }
+            end
             i = j
         else
             i = i + 1
