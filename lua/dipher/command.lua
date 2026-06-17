@@ -269,9 +269,15 @@ function M.dispatch(fargs)
         if not base then
             return
         end
-        return require("dipher.git").panel({ rev = base .. "...", open_first = true })
+        return require("dipher.git").panel({
+            rev = base .. "...",
+            open_first = true,
+            supersede = true,
+        })
     end
-    require("dipher.git").panel({ rev = fargs, open_first = true })
+    -- `:Dipher <rev>` is idempotent: re-running it over a live session opens the new diff
+    -- and closes the previous one (supersede), rather than toggling the sidebar
+    require("dipher.git").panel({ rev = fargs, open_first = true, supersede = true })
 end
 
 ---@type table<string, string[]>

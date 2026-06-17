@@ -64,7 +64,8 @@ describe("command base shortcut", function()
         end
         command.dispatch({ "base" })
         git.resolve_base, git.panel = saved_base, saved_panel
-        assert.are.same({ rev = "origin/main...", open_first = true }, got)
+        -- supersede: re-running over a live session reopens (idempotent), like :Dipher <rev>
+        assert.are.same({ rev = "origin/main...", open_first = true, supersede = true }, got)
     end)
 
     it("does nothing when no base resolves", function()

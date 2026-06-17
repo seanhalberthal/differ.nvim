@@ -502,16 +502,24 @@ end
 ---@field height? integer
 ---@field width? integer
 ---@field open_first? boolean
+---@field supersede? boolean  -- close a live session and reopen (`:Dipher <rev>` idempotency)
 ---@param opts dipher.git.PanelOpts
 ---@return dipher.Panel|nil
 function M.panel(opts)
     local Panel = require("dipher.panel")
-    -- a live session (sidebar shown or hidden) toggles the sidebar's visibility in
-    -- place; the diff view + session tab survive. :Dipher close ends the session
+    -- a live session: a bare `:Dipher` / the `:Dipher panel` command toggles the
+    -- sidebar's visibility in place (the diff view + session tab survive). a `:Dipher
+    -- <rev>` (opts.supersede) re-runs idempotently — close the live session and open a
+    -- fresh diff of the new rev. `:Dipher close` ends the session
     local existing = Panel.current()
     if existing then
-        existing:toggle()
-        return existing
+        local has_rev = (type(opts.rev) == "string" and opts.rev ~= "")
+            or (type(opts.rev) == "table" and #opts.rev > 0)
+        if not (opts.supersede and has_rev) then
+            existing:toggle()
+            return existing
+        end
+        existing:close() -- close cascades to the diff view + session tab; current = nil
     end
 
     -- the file + line :Dipher was invoked from, so open_first can open that file at
