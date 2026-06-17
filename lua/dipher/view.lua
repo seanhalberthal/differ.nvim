@@ -1086,32 +1086,36 @@ function View:_release_edit_window()
     pcall(vim.api.nvim_win_close, win, false)
 end
 
--- the diff window is the session anchor: closing one of its columns ends the whole
--- session, so there's never a live state without a diff window. (re)arm a WinClosed
--- guard on each column window; re-armed after every relayout since winids change
+-- the diff buffer is the session anchor: when it leaves its window the whole session
+-- ends, so there's never a live state without the diff on screen. guarding the buffer
+-- (BufWinLeave) not the window catches both `:q` and a swap-in-place (a picker / :edit
+-- loading another file into the diff window). re-armed after every relayout since the
+-- buffers are recreated
 function View:_arm_close_guard()
     armed_view = self -- this view now owns the close-teardown; supersede any prior one
     self._close_group =
         vim.api.nvim_create_augroup("dipher.viewclose." .. self.id, { clear = true })
     for _, col in ipairs(self.columns) do
-        if col.winid and vim.api.nvim_win_is_valid(col.winid) then
-            vim.api.nvim_create_autocmd("WinClosed", {
+        if col.bufnr and vim.api.nvim_buf_is_valid(col.bufnr) then
+            vim.api.nvim_create_autocmd("BufWinLeave", {
                 group = self._close_group,
-                pattern = tostring(col.winid),
+                buffer = col.bufnr,
                 callback = function()
-                    self:_on_diff_window_closed()
+                    self:_on_diff_lost()
                 end,
             })
         end
     end
 end
 
--- a diff column window was closed. ignore our own programmatic closes (layout toggle,
--- teardown) and re-entrancy; otherwise tear down the whole session via its owner
--- (panel / history), or just this view when it's a bare diff. deferred because window
--- changes (closing the panel, the session tab) aren't allowed inside WinClosed
-function View:_on_diff_window_closed()
-    -- only the current session's view tears down (a recycled winid can fire a stale
+-- the diff buffer left its window (closed, or swapped out by a picker / :edit). ignore
+-- our own programmatic closes (layout toggle, teardown) and re-entrancy; otherwise tear
+-- down the whole session via its owner (panel / history), or just this view when it's a
+-- bare diff. deferred because window changes (closing the panel, the session tab) aren't
+-- allowed inside BufWinLeave, which also fires *before* the buffer leaves, so the
+-- still-displayed re-check has to wait for the schedule
+function View:_on_diff_lost()
+    -- only the current session's view tears down (a recycled buffer can fire a stale
     -- view's guard); ignore our own programmatic closes and re-entrancy
     if self ~= armed_view or self._suppress_close or self._closing then
         return
@@ -1119,16 +1123,33 @@ function View:_on_diff_window_closed()
     self._closing = true
     vim.schedule(function()
         -- re-check at run time: a newer session may have armed, or this view may have
-        -- been torn down another way, between the close and this deferred callback
+        -- been torn down another way, between the leave and this deferred callback
         if self ~= armed_view or #self.columns == 0 then
             return
         end
-        local owner = require("dipher.panel").current() or require("dipher.history").current()
-        if owner then
-            owner:close() -- on_close cascades to this view + the session tab
-        else
-            self:close()
+        -- BufWinLeave fires before the buffer leaves, so an aborted switch (e.g. :edit
+        -- of an unreadable file) can leave the diff fully on screen: only skip when
+        -- every column is still shown. any column gone (a swap-in-place, a split-pane
+        -- :q) means the diff is broken, so tear the session down
+        local all_shown = true
+        local repurposed -- a buffer the user navigated to in a surviving diff window
+        for _, col in ipairs(self.columns) do
+            if not (col.bufnr and #vim.fn.win_findbuf(col.bufnr) > 0) then
+                all_shown = false
+                if col.winid and vim.api.nvim_win_is_valid(col.winid) then
+                    local newbuf = vim.api.nvim_win_get_buf(col.winid)
+                    if newbuf ~= col.bufnr then
+                        repurposed = newbuf -- a picker / :edit loaded this in place
+                    end
+                end
+            end
         end
+        if all_shown then
+            self._closing = false
+            return
+        end
+        -- end the session, carrying any swapped-in buffer out to the launch tab
+        require("dipher.git").navigate_away(repurposed, self)
     end)
 end
 
@@ -1185,8 +1206,15 @@ function View:_discard(col, keep_win)
     end
     by_buf[col.bufnr] = nil
     statuscolumn.clear(col.bufnr)
-    if col.winid and col.winid ~= keep_win and vim.api.nvim_win_is_valid(col.winid) then
-        -- our own close: don't let the WinClosed guard mistake it for a user close
+    -- only close a window we still own: if the user swapped another buffer into it
+    -- (a picker / :edit), it's theirs now, so leave it (and the navigation) alone
+    if
+        col.winid
+        and col.winid ~= keep_win
+        and vim.api.nvim_win_is_valid(col.winid)
+        and vim.api.nvim_win_get_buf(col.winid) == col.bufnr
+    then
+        -- our own close: don't let the close guard mistake it for a user close
         self._suppress_close = true
         pcall(vim.api.nvim_win_close, col.winid, true)
         self._suppress_close = false

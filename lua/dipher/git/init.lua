@@ -981,6 +981,37 @@ function M.range_history(opts)
     return history
 end
 
+-- the user navigated away in place inside a dipher window (a picker / :edit swapped a
+-- buffer into the diff, panel or compose window). the session's windows live in their
+-- own tabpage, so end the session and carry the swapped-in buffer out to the tab it was
+-- launched from, else the navigation dies with the tab. shared by every window's
+-- navigate-away guard; a no-op once the session is already gone (idempotent)
+---@param repurposed integer|nil  the buffer the user navigated to, to re-home
+---@param fallback_view dipher.View|nil  a bare diff view to close when there's no owner
+function M.navigate_away(repurposed, fallback_view)
+    local owner = require("dipher.panel").current() or require("dipher.history").current()
+    if not owner then
+        -- a bare diff (no panel / history): just close it; the _discard guard leaves the
+        -- navigated window in place, so there's nothing to carry out
+        if fallback_view then
+            fallback_view:close()
+        end
+        return
+    end
+    local return_tab = owner.return_tab
+    owner:close() -- on_close cascades to the diff view + the session tab
+    if
+        repurposed
+        and vim.api.nvim_buf_is_valid(repurposed)
+        and #vim.fn.win_findbuf(repurposed) == 0
+    then
+        if return_tab and vim.api.nvim_tabpage_is_valid(return_tab) then
+            vim.api.nvim_set_current_tabpage(return_tab)
+        end
+        vim.api.nvim_set_current_buf(repurposed)
+    end
+end
+
 -- :Dipher close: tear down the whole local session: the panel (which closes the
 -- diff view it drives via on_close) or, failing that, a bare diff view
 function M.close()

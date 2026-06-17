@@ -113,13 +113,29 @@ function M.open(opts)
         vim.keymap.set("n", lhs, cancel, { buffer = buf, nowait = true, desc = "dipher: cancel" })
     end
     -- a wipe from any other path (e.g. :q) counts as a cancel, so the caller's state
-    -- doesn't get stranded waiting on a submit that never comes
+    -- doesn't get stranded waiting on a submit that never comes. if instead a picker /
+    -- :edit swapped another buffer into the compose window (the window survives holding
+    -- a foreign buffer), end the whole session and carry that file out, rather than
+    -- silently cancelling the comment
     vim.api.nvim_create_autocmd({ "WinClosed", "BufWipeout" }, {
         buffer = buf,
         once = true,
         callback = function()
-            if not closed then
-                cancel()
+            if closed then
+                return
+            end
+            local foreign
+            if win and vim.api.nvim_win_is_valid(win) then
+                local cur = vim.api.nvim_win_get_buf(win)
+                if cur ~= buf and vim.api.nvim_buf_is_valid(cur) then
+                    foreign = cur
+                end
+            end
+            cancel()
+            if foreign then
+                vim.schedule(function()
+                    require("dipher.git").navigate_away(foreign)
+                end)
             end
         end,
     })

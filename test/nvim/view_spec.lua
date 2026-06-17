@@ -773,6 +773,26 @@ describe("view close guard", function()
         assert.are.equal(0, #v.columns)
     end)
 
+    it("tears down but keeps the window when a buffer is swapped into the diff window", function()
+        two_windows()
+        local v = View.new(model("a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local buf, win = v.columns[1].bufnr, v.columns[1].winid
+        local other = vim.api.nvim_create_buf(true, false) -- a file the user picks
+        vim.api.nvim_win_set_buf(win, other) -- a picker / :edit into the diff window
+        vim.wait(500, function()
+            return not vim.api.nvim_buf_is_valid(buf)
+        end)
+        assert.is_false(vim.api.nvim_buf_is_valid(buf)) -- the diff tore down
+        assert.are.equal(0, #v.columns)
+        assert.is_true(vim.api.nvim_win_is_valid(win)) -- but the navigated window and
+        assert.are.equal(other, vim.api.nvim_win_get_buf(win)) -- its buffer survive
+    end)
+
     it("survives a layout toggle that closes one of its own windows", function()
         two_windows()
         local v = View.new(model("a\nb\nc\n", "a\nB\nc\n"), {

@@ -215,6 +215,63 @@ describe(":Dipher panel", function()
         assert.are.equal(origin_buf, vim.api.nvim_get_current_buf())
     end)
 
+    it("ends the session and carries the file out when navigated into the diff window", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "local x = 2\nreturn x\n")
+        write(root .. "/elsewhere.lua", "return 99\n")
+        vim.cmd.edit(root .. "/a.lua")
+        local origin_tab = vim.api.nvim_get_current_tabpage()
+        local ntabs = #vim.api.nvim_list_tabpages()
+
+        git_src.panel({ open_first = true })
+        local other = vim.fn.bufadd(root .. "/elsewhere.lua")
+        vim.fn.bufload(other)
+        local diff_win = vim.api.nvim_get_current_win() -- open_first leaves us in the diff
+        vim.api.nvim_win_set_buf(diff_win, other) -- a picker / :edit into the diff window
+        vim.wait(500, function()
+            return Panel.current() == nil
+        end)
+        assert.is_nil(Panel.current()) -- the whole session tore down
+        assert.are.equal(ntabs, #vim.api.nvim_list_tabpages()) -- session tab dropped
+        assert.are.equal(origin_tab, vim.api.nvim_get_current_tabpage()) -- back in origin tab
+        assert.are.equal("elsewhere.lua", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t"))
+    end)
+
+    it("ends the session and carries the file out when navigated into the panel window", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "local x = 2\nreturn x\n")
+        write(root .. "/elsewhere.lua", "return 99\n")
+        vim.cmd.edit(root .. "/a.lua")
+        local origin_tab = vim.api.nvim_get_current_tabpage()
+        local ntabs = #vim.api.nvim_list_tabpages()
+
+        git_src.panel({ open_first = true })
+        local p = Panel.current()
+        local other = vim.fn.bufadd(root .. "/elsewhere.lua")
+        vim.fn.bufload(other)
+        vim.api.nvim_win_set_buf(p.winid, other) -- a picker / :edit into the panel window
+        vim.wait(500, function()
+            return Panel.current() == nil
+        end)
+        assert.is_nil(Panel.current()) -- the whole session tore down
+        assert.are.equal(ntabs, #vim.api.nvim_list_tabpages()) -- session tab dropped
+        assert.are.equal(origin_tab, vim.api.nvim_get_current_tabpage())
+        assert.are.equal("elsewhere.lua", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t"))
+    end)
+
+    it("keeps the session alive when the panel sidebar is merely toggled off", function()
+        local root = fresh_repo()
+        write(root .. "/a.lua", "local x = 2\nreturn x\n")
+        vim.cmd.edit(root .. "/a.lua")
+
+        git_src.panel({ open_first = true })
+        local p = Panel.current()
+        git_src.panel({}) -- toggle hides the sidebar (closes the panel window)
+        vim.wait(100) -- give any (wrongly) scheduled teardown a chance to fire
+        assert.are.equal(p, Panel.current()) -- still the same live session
+        require("dipher.git").close()
+    end)
+
     it("opens the real file in the origin tab on jump-to-file (gofile)", function()
         local root = fresh_repo()
         write(root .. "/a.lua", "local x = 2\nreturn x\n")

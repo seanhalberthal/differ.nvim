@@ -762,6 +762,29 @@ function Panel:_setup_window()
         end,
     })
 
+    -- navigate-away guard: a picker / :edit that swaps another buffer into the panel
+    -- window ends the session (the panel is the session anchor's sidebar, not a place
+    -- to open files), carrying the navigation out to the launch tab. only a survived
+    -- window holding a foreign buffer counts; a plain close (hide / reposition / :q)
+    -- leaves no window, so it's ignored
+    vim.api.nvim_create_autocmd("BufWinLeave", {
+        group = self.win_augroup,
+        buffer = self.bufnr,
+        desc = "dipher: end the session when the panel window is navigated away",
+        callback = function()
+            local pwin = self.winid
+            vim.schedule(function()
+                if not (pwin and vim.api.nvim_win_is_valid(pwin)) then
+                    return
+                end
+                local newbuf = vim.api.nvim_win_get_buf(pwin)
+                if newbuf ~= self.bufnr and vim.api.nvim_buf_is_valid(newbuf) then
+                    require("dipher.git").navigate_away(newbuf)
+                end
+            end)
+        end,
+    })
+
     local km = self.keymaps
     local function map(spec, fn, desc)
         bind(self.bufnr, spec, fn, "dipher panel: " .. desc)
