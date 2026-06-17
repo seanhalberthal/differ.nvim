@@ -64,8 +64,9 @@ function M.set_file_viewed(pr, path, viewed, cb)
 end
 
 -- get_threads result: [{id, thread_id, path, side, line, start_side?, start_line?,
--- resolved, is_pending, comments:[{id, author, body, created_at}]}]. PR-wide; the
--- frontend keeps it per session and filters to the current file's path when painting
+-- resolved, is_pending, comments:[{id, node_id, author, body, created_at}]}]. PR-wide;
+-- the frontend keeps it per session and filters to the current file's path when
+-- painting. node_id is the per-comment graphql id delete_comment targets
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param cb fun(err: table|nil, result: any)
 function M.get_threads(pr, cb)
@@ -145,6 +146,15 @@ end
 ---@param cb fun(err: table|nil, result: any)
 function M.submit_review(pr, args, cb)
     sidecar.request("submit_review", with_pr(pr, args), cb)
+end
+
+-- delete_comment result: {}. removes a single review comment (draft or published) by
+-- its graphql node id; deleting a thread's root comment cascades to the whole thread
+---@param pr { owner: string, repo: string, number: integer }
+---@param comment_id string  -- the comment's graphql node id (node_id from get_threads)
+---@param cb fun(err: table|nil, result: any)
+function M.delete_comment(pr, comment_id, cb)
+    sidecar.request("delete_comment", with_pr(pr, { comment_id = comment_id }), cb)
 end
 
 return M

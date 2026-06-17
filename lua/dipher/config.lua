@@ -73,6 +73,7 @@ M.defaults = {
         -- native gp (paste, inert on the read-only diff)
         comment = "ga", -- comment on the line (normal) or the selection (visual)
         reply = "gp", -- reply to the thread under the cursor
+        delete_comment = "gx", -- delete the latest comment of the thread under the cursor
         scroll_down = "f", -- all three (shadows native f/b; set false to restore)
         scroll_up = "b",
         select = { "<CR>", "o" }, -- panel, history

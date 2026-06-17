@@ -51,6 +51,29 @@ func (d Deps) postComment(ctx context.Context, params json.RawMessage) (any, err
 	})
 }
 
+type deleteCommentParams struct {
+	prParams
+	CommentID string `json:"comment_id"` // the comment's graphql node id
+}
+
+// deleteComment removes a single review comment (draft or published) by node id.
+func (d Deps) deleteComment(ctx context.Context, params json.RawMessage) (any, error) {
+	var p deleteCommentParams
+	if err := decode(params, &p); err != nil {
+		return nil, err
+	}
+	if err := requirePR(p.Owner, p.Repo, p.Number); err != nil {
+		return nil, err
+	}
+	if p.CommentID == "" {
+		return nil, protocol.NewError(protocol.CodeBadRequest, "comment_id is required")
+	}
+	if err := d.GH.DeleteComment(ctx, p.CommentID); err != nil {
+		return nil, err
+	}
+	return struct{}{}, nil
+}
+
 // validateAnchor checks a new thread's diff anchor before any API call. only what
 // GitHub guarantees is enforced: a known side, a positive end line, and a range that
 // starts strictly before it ends. cross-side ranges (start LEFT → end RIGHT) are

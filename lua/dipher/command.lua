@@ -115,6 +115,9 @@ function M.pr(verb, arg)
         reply = function()
             pr.reply()
         end,
+        delete = function()
+            pr.delete_comment()
+        end,
     }
     local h = dispatch[verb]
     if h then
@@ -218,6 +221,7 @@ local VALUES = {
     -- later slices implement these sub-verbs; listing now keeps completion stable
     pr = {
         "list",
+        "delete",
         "resolve",
         "reply",
         "review",

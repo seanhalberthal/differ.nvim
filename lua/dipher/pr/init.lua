@@ -453,6 +453,11 @@ function M.reply()
         require("dipher.pr.comment").reply(session)
     end
 end
+function M.delete_comment()
+    if session then
+        require("dipher.pr.comment").delete(session)
+    end
+end
 function M.review()
     if not session then
         return notify("open a PR first")
@@ -470,6 +475,26 @@ function M.discard_review()
         return notify("open a PR first")
     end
     require("dipher.pr.review").discard(session)
+end
+
+-- on open, adopt an existing pending review so commenting reflects draft mode from the
+-- start: github allows one pending review per PR, so new comments join it as drafts
+-- rather than posting immediately. a null review_id decodes to vim.NIL (truthy), so
+-- guard on the string type
+---@param pr { owner: string, repo: string, number: integer }
+local function adopt_pending_review(pr)
+    client.get_pending_review(pr, function(err, res)
+        if err or not (session and session.pr == pr) then
+            return -- fetch failed, or the session was replaced/closed meanwhile
+        end
+        local review_id = res and res.review_id
+        if type(review_id) == "string" and review_id ~= "" then
+            session.review_id = review_id
+            notify(
+                "you have a pending review here — comments are drafts (:Dipher pr resume to manage)"
+            )
+        end
+    end)
 end
 
 -- open the session tab + file panel for a fetched PR and land on the first file
@@ -564,6 +589,7 @@ local function open_session(pr, detail, opts)
         { spec = diff_km.comment, fn = M.comment, desc = "comment" },
         { spec = diff_km.comment, fn = M.comment_range, desc = "comment on selection", mode = "x" },
         { spec = diff_km.reply, fn = M.reply, desc = "reply to thread" },
+        { spec = diff_km.delete_comment, fn = M.delete_comment, desc = "delete comment" },
     }
 
     local panel = Panel.new({
@@ -597,6 +623,8 @@ local function open_session(pr, detail, opts)
     panel:select(true)
     if opts and opts.after then
         opts.after() -- e.g. resume: reattach the pending draft + restore position
+    else
+        adopt_pending_review(pr)
     end
 end
 

@@ -106,6 +106,7 @@ type threadsGQL struct {
 // as a string (the numeric comment id, the reply anchor); state is PENDING on an
 // unsubmitted draft.
 type commentGQL struct {
+	ID             string   `json:"id"` // graphql node id, the delete_comment target
 	FullDatabaseID string   `json:"fullDatabaseId"`
 	Author         loginDTO `json:"author"`
 	Body           string   `json:"body"`
@@ -210,10 +211,18 @@ type submitReviewGQL struct {
 	} `json:"submitPullRequestReview"`
 }
 
-// restComment is the REST POST /pulls/{n}/comments response: an immediate (published)
-// review comment's numeric id.
-type restComment struct {
-	ID int64 `json:"id"`
+// publishCommentGQL is the addPullRequestReview (event: COMMENT) response: the new
+// published comment's numeric id, for the post_comment result.
+type publishCommentGQL struct {
+	AddPullRequestReview struct {
+		PullRequestReview struct {
+			Comments struct {
+				Nodes []struct {
+					FullDatabaseID string `json:"fullDatabaseId"`
+				} `json:"nodes"`
+			} `json:"comments"`
+		} `json:"pullRequestReview"`
+	} `json:"addPullRequestReview"`
 }
 
 // prNodeIDGQL carries a PR's node id (the anchor for review state mutations).

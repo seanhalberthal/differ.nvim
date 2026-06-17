@@ -145,6 +145,48 @@ function M.reply(session)
     M.compose(session, { in_reply_to = anchor.threads[1].thread_id, anchor_win = win })
 end
 
+-- gx / :Dipher pr delete — delete the most recent comment of the thread under the
+-- cursor (usually a draft you just wrote). deleting the only/root comment removes the
+-- whole thread; a later comment deletes just that reply. confirms first (destructive),
+-- then re-fetches so the overlay updates
+---@param session table
+function M.delete(session)
+    local win = vim.api.nvim_get_current_win()
+    local buf = vim.api.nvim_win_get_buf(win)
+    local row = vim.api.nvim_win_get_cursor(win)[1]
+    local anchor = require("dipher.pr.threads").anchor_at(session, buf, row)
+    if not anchor then
+        return notify("no thread under the cursor to delete from")
+    end
+    local comments = anchor.threads[1].comments or {}
+    local target = comments[#comments] -- the most recent comment on the thread
+    if not (target and target.node_id and target.node_id ~= "") then
+        return notify("this comment can't be deleted")
+    end
+    local snippet = (target.body or ""):match("[^\n]*") or ""
+    if #snippet > 40 then
+        snippet = snippet:sub(1, 39) .. "…"
+    end
+    local root = #comments == 1
+    local prompt = (root and 'Delete this thread? "' or 'Delete the last reply? "')
+        .. snippet
+        .. '"'
+    if vim.fn.confirm(prompt, "&Yes\n&No", 2) ~= 1 then
+        return
+    end
+    client.delete_comment(session.pr, target.node_id, function(err, _)
+        if not (session and session.view and session.view:is_open()) then
+            return -- session torn down while the delete was in flight
+        end
+        if err then
+            return require("dipher.pr").notify_err(err)
+        end
+        session.threads = nil
+        require("dipher.pr.threads").refresh(session)
+        notify(root and "thread deleted" or "comment deleted")
+    end)
+end
+
 -- ── compose + post ────────────────────────────────────────────────────────────────
 
 -- open the compose float for `opts` (a gesture anchor, or a reply target). the title
@@ -190,7 +232,7 @@ function M.post(session, opts, body)
     if session.review_id then
         args.review_id = session.review_id
     end
-    client.post_comment(session.pr, args, function(err, _)
+    client.post_comment(session.pr, args, function(err, res)
         if not (session and session.view and session.view:is_open()) then
             return -- session torn down while the post was in flight
         end
@@ -204,6 +246,12 @@ function M.post(session, opts, body)
                 end)
             end
             return require("dipher.pr").notify_err(err)
+        end
+        -- an immediate comment lands in an existing pending review when one exists
+        -- (github allows one per PR); adopt it so the session knows it's drafting and
+        -- submit/discard work
+        if res and res.review_id and res.review_id ~= "" then
+            session.review_id = res.review_id
         end
         -- the sidecar invalidated its thread cache on the post, so a fresh fetch carries
         -- the new comment (right author/draft state, correct thread grouping)

@@ -71,10 +71,13 @@ function M.reattach(session)
         if err then
             return require("dipher.pr").notify_err(err)
         end
-        if not (res and res.review_id) then
+        -- a PR with no draft decodes review_id as null -> vim.NIL (userdata, truthy),
+        -- so guard on the string type rather than truthiness
+        local review_id = res and res.review_id
+        if type(review_id) ~= "string" or review_id == "" then
             return notify("no pending review to resume on this PR")
         end
-        session.review_id = res.review_id
+        session.review_id = review_id
         local first = res.comments and res.comments[1]
         if first then
             require("dipher.pr").goto_anchor({

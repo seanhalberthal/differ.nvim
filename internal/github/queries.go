@@ -50,6 +50,7 @@ query GetThreads($owner: String!, $repo: String!, $number: Int!, $cursor: String
           startDiffSide
           comments(first: 100) {
             nodes {
+              id
               fullDatabaseId
               author { login }
               body

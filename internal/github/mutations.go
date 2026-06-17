@@ -25,6 +25,20 @@ mutation AddReview($prId: ID!) {
   }
 }`
 
+// publishCommentMutation posts a single published comment by creating its own review
+// and submitting it (event: COMMENT) in one mutation. unlike addPullRequestReviewThread
+// (which drafts into a pending review and would attach to the viewer's existing draft),
+// this never touches any pending review. the thread shape anchors exactly like the draft
+// path, so deleted-file / cross-side anchors behave the same.
+const publishCommentMutation = `
+mutation PublishComment($prId: ID!, $threads: [DraftPullRequestReviewThread!]) {
+  addPullRequestReview(input: {pullRequestId: $prId, event: COMMENT, threads: $threads}) {
+    pullRequestReview {
+      comments(first: 1) { nodes { fullDatabaseId } }
+    }
+  }
+}`
+
 // submitReviewMutation finalizes a pending review with an event (APPROVE /
 // REQUEST_CHANGES / COMMENT) and optional body.
 const submitReviewMutation = `
@@ -61,6 +75,16 @@ mutation AddThread($reviewId: ID!, $path: String!, $body: String!, $line: Int!, 
       id
       comments(first: 1) { nodes { fullDatabaseId } }
     }
+  }
+}`
+
+// deleteCommentMutation removes a single review comment (draft or published) by its
+// node id. deleting a thread's root comment cascades to the thread; deleting a reply
+// drops just the reply.
+const deleteCommentMutation = `
+mutation DeleteComment($id: ID!) {
+  deletePullRequestReviewComment(input: {id: $id}) {
+    pullRequestReview { id }
   }
 }`
 

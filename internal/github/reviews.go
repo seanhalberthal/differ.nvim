@@ -6,23 +6,37 @@ import (
 	"github.com/seanhalberthal/dipher.nvim/internal/protocol"
 )
 
-// StartReview creates a pending review on the PR, or returns the viewer's existing
-// one. it is idempotent (§7.5): GitHub allows one pending review per viewer per PR,
-// so resume reattaches to the live draft instead of orphaning a second one.
-func (c *Client) StartReview(ctx context.Context, owner, repo string, number int) (*StartReview, error) {
+// prAndPendingReview returns the PR node id and the viewer's existing pending review
+// id ("" if none) in one round trip. GitHub allows one pending review per viewer per
+// PR, so this drives both start_review's idempotence and the immediate-comment routing
+// (a new comment must join an existing pending review as a draft, not publish a second).
+func (c *Client) prAndPendingReview(ctx context.Context, owner, repo string, number int) (prID, pendingID string, err error) {
 	var look startReviewLookupGQL
 	vars := map[string]any{"owner": owner, "repo": repo, "number": number}
 	if err := c.graphql(ctx, startReviewLookupQuery, vars, &look); err != nil {
-		return nil, err
+		return "", "", err
+	}
+	prID = look.Repository.PullRequest.ID
+	if prID == "" {
+		return "", "", protocol.NewError(protocol.CodeNotFound, "pull request not found")
 	}
 	if nodes := look.Repository.PullRequest.Reviews.Nodes; len(nodes) > 0 {
-		return &StartReview{ReviewID: nodes[0].ID}, nil
+		pendingID = nodes[0].ID
 	}
-	prID := look.Repository.PullRequest.ID
-	if prID == "" {
-		return nil, protocol.NewError(protocol.CodeNotFound, "pull request not found")
-	}
+	return prID, pendingID, nil
+}
 
+// StartReview creates a pending review on the PR, or returns the viewer's existing
+// one. it is idempotent (§7.5): resume reattaches to the live draft instead of
+// orphaning a second one.
+func (c *Client) StartReview(ctx context.Context, owner, repo string, number int) (*StartReview, error) {
+	prID, pendingID, err := c.prAndPendingReview(ctx, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	if pendingID != "" {
+		return &StartReview{ReviewID: pendingID}, nil
+	}
 	var created addReviewGQL
 	if err := c.graphql(ctx, addReviewMutation, map[string]any{"prId": prID}, &created); err != nil {
 		return nil, err

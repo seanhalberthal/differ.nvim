@@ -41,6 +41,7 @@ func (c *Client) GetThreads(ctx context.Context, owner, repo string, number int)
 			for _, cm := range n.Comments.Nodes {
 				t.Comments = append(t.Comments, ThreadComment{
 					ID:        parseID(cm.FullDatabaseID),
+					NodeID:    cm.ID,
 					Author:    cm.Author.Login,
 					Body:      cm.Body,
 					CreatedAt: cm.CreatedAt,

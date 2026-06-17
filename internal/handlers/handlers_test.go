@@ -15,23 +15,24 @@ import (
 // mockAPI records what it was called with so handler routing/validation can be
 // asserted without the github transport.
 type mockAPI struct {
-	prs         []github.PR
-	detail      *github.PRDetail
-	gotFilter   string
-	gotNumber   int
-	gotPath     string
-	gotBase     string
-	gotHead     string
-	gotReviewID string
-	gotEvent    string
-	gotComment  github.PostCommentInput
-	gotThreadID string
-	gotResolved bool
-	gotViewed   bool
-	gotMethod   string
-	gotState    string
-	cleared     bool
-	called      bool
+	prs          []github.PR
+	detail       *github.PRDetail
+	gotFilter    string
+	gotNumber    int
+	gotPath      string
+	gotBase      string
+	gotHead      string
+	gotReviewID  string
+	gotEvent     string
+	gotComment   github.PostCommentInput
+	gotThreadID  string
+	gotCommentID string
+	gotResolved  bool
+	gotViewed    bool
+	gotMethod    string
+	gotState     string
+	cleared      bool
+	called       bool
 }
 
 func (m *mockAPI) ListPRs(_ context.Context, _, _, filter string) ([]github.PR, error) {
@@ -97,6 +98,12 @@ func (m *mockAPI) PostComment(_ context.Context, _, _ string, number int, in git
 	m.gotNumber = number
 	m.gotComment = in
 	return &github.PostComment{ID: 555, ThreadID: "PRT_1"}, nil
+}
+
+func (m *mockAPI) DeleteComment(_ context.Context, commentID string) error {
+	m.called = true
+	m.gotCommentID = commentID
+	return nil
 }
 
 func (m *mockAPI) ResolveThread(_ context.Context, threadID string, resolved bool) (*github.ResolveThread, error) {
@@ -341,6 +348,26 @@ func TestPostCommentReplyRoutes(t *testing.T) {
 	}
 	if m.gotComment.InReplyTo != "PRT_5" {
 		t.Errorf("reply not forwarded: %+v", m.gotComment)
+	}
+}
+
+func TestDeleteCommentRoutes(t *testing.T) {
+	m := &mockAPI{}
+	_, err := deps(m).deleteComment(context.Background(), json.RawMessage(
+		`{"owner":"o","repo":"r","number":3,"comment_id":"PRRC_8"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.gotCommentID != "PRRC_8" {
+		t.Errorf("comment id not forwarded: %q", m.gotCommentID)
+	}
+}
+
+func TestDeleteCommentRequiresID(t *testing.T) {
+	m := &mockAPI{}
+	_, err := deps(m).deleteComment(context.Background(), json.RawMessage(`{"owner":"o","repo":"r","number":3}`))
+	if err == nil {
+		t.Fatal("want an error when comment_id is missing")
 	}
 }
 

@@ -1,7 +1,6 @@
 package github
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -25,45 +24,6 @@ func (c *Client) getJSON(ctx context.Context, rawURL string, out any) error {
 		return protocol.NewError(protocol.CodeInternal, err.Error())
 	}
 	c.setRESTHeaders(req)
-
-	resp, err := c.http.Do(req)
-	if perr := mapHTTP(resp, nil, err); perr != nil {
-		return perr
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
-	if err != nil {
-		return protocol.NewError(protocol.CodeNetwork, "reading response: "+err.Error())
-	}
-	if perr := mapHTTP(resp, body, nil); perr != nil {
-		return perr
-	}
-	if out == nil {
-		return nil
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return protocol.NewError(protocol.CodeInternal, "decoding response: "+err.Error())
-	}
-	return nil
-}
-
-// postJSON does an authenticated REST POST with a JSON body, maps the status to a
-// protocol code, and decodes the response into out (out may be nil to discard it).
-func (c *Client) postJSON(ctx context.Context, rawURL string, payload, out any) error {
-	if c.tokenErr != nil {
-		return c.tokenErr
-	}
-	buf, err := json.Marshal(payload)
-	if err != nil {
-		return protocol.NewError(protocol.CodeInternal, err.Error())
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(buf))
-	if err != nil {
-		return protocol.NewError(protocol.CodeInternal, err.Error())
-	}
-	c.setRESTHeaders(req)
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if perr := mapHTTP(resp, nil, err); perr != nil {

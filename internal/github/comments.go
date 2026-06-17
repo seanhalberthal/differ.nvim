@@ -2,7 +2,6 @@ package github
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/seanhalberthal/dipher.nvim/internal/protocol"
 )
@@ -22,7 +21,7 @@ func (c *Client) PostComment(ctx context.Context, owner, repo string, number int
 	case in.ReviewID != "":
 		res, err = c.draftThread(ctx, in)
 	default:
-		res, err = c.publishComment(ctx, owner, repo, number, in)
+		res, err = c.postNewThread(ctx, owner, repo, number, in)
 	}
 	if err == nil {
 		c.cache.invalidateThreads()
@@ -76,38 +75,55 @@ func (c *Client) draftThread(ctx context.Context, in PostCommentInput) (*PostCom
 	return pc, nil
 }
 
-// publishComment posts a published (non-draft) review comment via REST. unlike the
-// GraphQL addPullRequestReviewThread path (which always drafts into a pending review,
-// and would attach to the viewer's existing draft), the REST endpoint publishes
-// immediately and never touches any pending review. it anchors to the current head.
-func (c *Client) publishComment(ctx context.Context, owner, repo string, number int, in PostCommentInput) (*PostComment, error) {
-	_, head, err := c.prRefs(ctx, owner, repo, number)
+// postNewThread opens a new top-level thread without an explicit review. GitHub allows
+// one pending review per PR, so the route depends on whether one already exists: if it
+// does, the comment must join it as a draft (and we echo the review id so the frontend
+// adopts it); if not, the comment publishes immediately as its own COMMENT review. the
+// thread shape matches the draft path, so deleted-file / cross-side anchors behave the
+// same (the REST line-based endpoint was too strict and 422'd on those anchors).
+func (c *Client) postNewThread(ctx context.Context, owner, repo string, number int, in PostCommentInput) (*PostComment, error) {
+	prID, pendingID, err := c.prAndPendingReview(ctx, owner, repo, number)
 	if err != nil {
 		return nil, err
 	}
-	payload := map[string]any{
-		"body":      in.Body,
-		"commit_id": head,
-		"path":      in.Path,
-		"line":      in.Line,
-		"side":      in.Side,
+	if pendingID != "" {
+		in.ReviewID = pendingID
+		pc, derr := c.draftThread(ctx, in)
+		if derr != nil {
+			return nil, derr
+		}
+		pc.ReviewID = pendingID // signal the frontend the comment landed in a draft
+		return pc, nil
 	}
+
+	thread := map[string]any{"path": in.Path, "line": in.Line, "side": in.Side, "body": in.Body}
 	if in.StartLine != 0 {
 		side := in.StartSide
 		if side == "" {
 			side = in.Side
 		}
-		payload["start_line"] = in.StartLine
-		payload["start_side"] = side
+		thread["startLine"] = in.StartLine
+		thread["startSide"] = side
 	}
-	rawURL := c.restURL + "/repos/" + owner + "/" + repo + "/pulls/" + strconv.Itoa(number) + "/comments"
-	var out restComment
-	if err := c.postJSON(ctx, rawURL, payload, &out); err != nil {
+	var out publishCommentGQL
+	if err := c.graphql(ctx, publishCommentMutation, map[string]any{"prId": prID, "threads": []any{thread}}, &out); err != nil {
 		return nil, err
 	}
-	// REST returns the comment, not its thread; the frontend re-fetches threads after
-	// a post, so the thread node id isn't needed here
-	return &PostComment{ID: out.ID, ThreadID: ""}, nil
+	pc := &PostComment{}
+	if nodes := out.AddPullRequestReview.PullRequestReview.Comments.Nodes; len(nodes) > 0 {
+		pc.ID = parseID(nodes[0].FullDatabaseID)
+	}
+	return pc, nil
+}
+
+// DeleteComment removes a single review comment by its node id (draft or published).
+// the thread cache is invalidated so the next get_threads reflects the removal.
+func (c *Client) DeleteComment(ctx context.Context, commentID string) error {
+	if err := c.graphql(ctx, deleteCommentMutation, map[string]any{"id": commentID}, nil); err != nil {
+		return err
+	}
+	c.cache.invalidateThreads()
+	return nil
 }
 
 // prNodeID resolves a PR's GraphQL node id (the anchor for review state mutations).

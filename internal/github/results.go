@@ -71,9 +71,11 @@ type Thread struct {
 	Comments  []ThreadComment `json:"comments"`
 }
 
-// ThreadComment is one comment in a Thread. ID is the numeric comment id.
+// ThreadComment is one comment in a Thread. ID is the numeric comment id; NodeID is
+// the GraphQL node id (the delete_comment target).
 type ThreadComment struct {
 	ID        int64  `json:"id"`
+	NodeID    string `json:"node_id"`
 	Author    string `json:"author"`
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
@@ -129,10 +131,12 @@ type PostCommentInput struct {
 }
 
 // PostComment is the post_comment result: the new comment's numeric id and the node
-// id of the thread it belongs to (the same thread on a reply).
+// id of the thread it belongs to (the same thread on a reply). ReviewID is set when
+// the comment joined a pending review (a draft), so the frontend can adopt it.
 type PostComment struct {
 	ID       int64  `json:"id"`
 	ThreadID string `json:"thread_id"`
+	ReviewID string `json:"review_id,omitempty"`
 }
 
 // ResolveThread is the resolve_thread result: the thread's resolved state after the

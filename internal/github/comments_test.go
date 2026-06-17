@@ -12,7 +12,7 @@ import (
 func commentOp(t *testing.T, body []byte) string {
 	t.Helper()
 	s := string(body)
-	for _, op := range []string{"PRNodeID", "AddThreadReply", "AddThread"} {
+	for _, op := range []string{"StartReviewLookup", "PRNodeID", "PublishComment", "AddThreadReply", "AddThread"} {
 		if strings.Contains(s, op) {
 			return op
 		}
@@ -43,26 +43,27 @@ func TestPostCommentDraftThread(t *testing.T) {
 	}
 }
 
-// an immediate (no-review) post publishes via REST: resolve the head sha, then POST
-// the comment to /pulls/{n}/comments. it must NOT take the GraphQL draft path (which
-// would attach to the viewer's pending review and stay unpublished).
-func TestPostCommentImmediatePublishesViaREST(t *testing.T) {
-	var calls []string
+// with no pending review, an immediate post publishes its own COMMENT review: it looks
+// up the PR + pending review, finds none, then runs PublishComment.
+func TestPostCommentImmediatePublishesWhenNoPendingReview(t *testing.T) {
+	var ops []string
 	c := newClient(func(r *http.Request) (*http.Response, error) {
-		calls = append(calls, r.Method+" "+r.URL.Path)
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/o/r/pulls/3":
-			return resp(200, `{"base":{"sha":"base1"},"head":{"sha":"head9"}}`, nil), nil
-		case r.Method == http.MethodPost && r.URL.Path == "/repos/o/r/pulls/3/comments":
-			body := string(readBody(t, r))
-			for _, want := range []string{`"commit_id":"head9"`, `"path":"a.go"`, `"line":5`, `"side":"RIGHT"`, `"body":"hi"`} {
-				if !strings.Contains(body, want) {
-					t.Errorf("immediate REST payload missing %s: %s", want, body)
+		body := readBody(t, r)
+		op := commentOp(t, body)
+		ops = append(ops, op)
+		switch op {
+		case "StartReviewLookup":
+			return resp(200, `{"data":{"repository":{"pullRequest":{"id":"PR_NODE","reviews":{"nodes":[]}}}}}`, nil), nil
+		case "PublishComment":
+			s := string(body)
+			for _, want := range []string{`"prId":"PR_NODE"`, `"path":"a.go"`, `"line":5`, `"side":"RIGHT"`, `"body":"hi"`} {
+				if !strings.Contains(s, want) {
+					t.Errorf("publish payload missing %s: %s", want, s)
 				}
 			}
-			return resp(201, `{"id":42}`, nil), nil
+			return resp(200, `{"data":{"addPullRequestReview":{"pullRequestReview":{"comments":{"nodes":[{"fullDatabaseId":"42"}]}}}}}`, nil), nil
 		}
-		t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		t.Fatalf("unexpected op %s", op)
 		return nil, nil
 	})
 	pc, err := c.PostComment(context.Background(), "o", "r", 3, PostCommentInput{
@@ -71,11 +72,45 @@ func TestPostCommentImmediatePublishesViaREST(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || calls[0] != "GET /repos/o/r/pulls/3" || calls[1] != "POST /repos/o/r/pulls/3/comments" {
-		t.Errorf("want head lookup then REST post, got %v", calls)
+	if len(ops) != 2 || ops[0] != "StartReviewLookup" || ops[1] != "PublishComment" {
+		t.Errorf("want lookup then publish, got %v", ops)
 	}
-	if pc.ID != 42 || pc.ThreadID != "" {
-		t.Errorf("bad result: %+v", pc)
+	if pc.ID != 42 || pc.ReviewID != "" {
+		t.Errorf("a published comment carries no review id: %+v", pc)
+	}
+}
+
+// when a pending review already exists, an immediate post joins it as a draft (github
+// allows one pending review per PR) and echoes the review id so the frontend adopts it.
+func TestPostCommentImmediateJoinsExistingPendingReview(t *testing.T) {
+	var ops []string
+	c := newClient(func(r *http.Request) (*http.Response, error) {
+		body := readBody(t, r)
+		op := commentOp(t, body)
+		ops = append(ops, op)
+		switch op {
+		case "StartReviewLookup":
+			return resp(200, `{"data":{"repository":{"pullRequest":{"id":"PR_NODE","reviews":{"nodes":[{"id":"PRR_X"}]}}}}}`, nil), nil
+		case "AddThread":
+			if !strings.Contains(string(body), `"reviewId":"PRR_X"`) {
+				t.Errorf("comment must join the pending review: %s", body)
+			}
+			return resp(200, `{"data":{"addPullRequestReviewThread":{"thread":{"id":"PRT_2","comments":{"nodes":[{"fullDatabaseId":"7"}]}}}}}`, nil), nil
+		}
+		t.Fatalf("unexpected op %s", op)
+		return nil, nil
+	})
+	pc, err := c.PostComment(context.Background(), "o", "r", 3, PostCommentInput{
+		Path: "a.go", Side: "RIGHT", Line: 5, Body: "hi",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ops) != 2 || ops[0] != "StartReviewLookup" || ops[1] != "AddThread" {
+		t.Errorf("want lookup then draft, got %v", ops)
+	}
+	if pc.ID != 7 || pc.ThreadID != "PRT_2" || pc.ReviewID != "PRR_X" {
+		t.Errorf("draft result must echo the review id: %+v", pc)
 	}
 }
 
@@ -92,6 +127,19 @@ func TestPostCommentRangeDefaultsStartSide(t *testing.T) {
 		Path: "a.go", Side: "RIGHT", Line: 8, StartLine: 4, Body: "range", ReviewID: "PRR_1",
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteComment(t *testing.T) {
+	c := newClient(func(r *http.Request) (*http.Response, error) {
+		body := string(readBody(t, r))
+		if !strings.Contains(body, "DeleteComment") || !strings.Contains(body, `"id":"PRRC_8"`) {
+			t.Errorf("delete mutation not sent with the node id: %s", body)
+		}
+		return resp(200, `{"data":{"deletePullRequestReviewComment":{"pullRequestReview":{"id":"PRR_1"}}}}`, nil), nil
+	})
+	if err := c.DeleteComment(context.Background(), "PRRC_8"); err != nil {
 		t.Fatal(err)
 	}
 }

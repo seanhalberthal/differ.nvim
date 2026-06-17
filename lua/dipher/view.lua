@@ -472,7 +472,9 @@ function View:_setup_window(winid, bufnr)
     set_wo(winid, "relativenumber", false)
     set_wo(winid, "signcolumn", "no")
     set_wo(winid, "foldcolumn", "0")
+    set_wo(winid, "list", false) -- no listchars markers; we own rendering
     set_wo(winid, "wrap", self.wrap)
+    set_wo(winid, "spell", false) -- syntax is OFF here, so spell would check every word, not just comments
     if self.counter then
         -- a `%!` expression so the hunk count tracks the cursor on every redraw
         set_wo(winid, "winbar", '%!v:lua.require("dipher.ui.winbar").diff()')
