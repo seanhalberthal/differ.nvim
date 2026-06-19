@@ -2,7 +2,7 @@
 
 # differ.nvim
 
-**A Neovim diff viewer with a stacked dual-rail layout alongside side-by-side, word-level highlighting, and treesitter syntax.**
+**your whole diff and review loop in one neovim plugin: local diffs, file history, staging, pr review, and merge conflicts, all with the same UX.**
 
 [![Lua](https://img.shields.io/badge/Lua-5.1-2C2D72?style=flat&logo=lua&logoColor=white)](https://www.lua.org)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
@@ -17,26 +17,33 @@
 
 ---
 
-differ renders local git diffs and (eventually) GitHub PR reviews through one Lua engine. The bet is a single renderer core with a bidirectional line map, fed by interchangeable sources, so every diff shares one render path. It targets the diffview + octo workflows it replaces, not a cut-down version of them.
+you can already get most of this from existing plugins, just not all of it in one tool with the same feel. that's what i wanted, so i built it.
+
+everything runs through one renderer, so staging a hunk and replying to a review comment behave like the same tool, because they are. the default view is a stacked dual-rail layout: one scroll surface with old and new lines interleaved per hunk and both line numbers in the gutter. side-by-side is a keystroke away from the same model. word-level highlighting and treesitter syntax are on by default.
+
+the github side runs in a separate process rather than the editor, so opening a pr or posting a review doesn't block on the api, and results are cached between calls.
 
 ---
 
 ## Status
 
-differ is in early development and not ready to daily-drive.
+everything through the merge tool is built and usable: both layouts, the file picker and panel, hunk staging, file history, the full pr-review flow (inline threads, drafts, viewed-state, checks, lifecycle actions), and 3-way conflict resolution.
 
-The rendering core is done: local diffs render in both layouts with word-level highlights and treesitter syntax, and the git source layer is wired so `:Differ` diffs the current file. The changed-file picker, file panel, staging, history, and the entire PR-review side are not built yet. See the [roadmap](#roadmap).
+a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, server-pushed refresh) is on the roadmap, TBD. and it hasn't had broad real-world testing yet, so there may be some rough edges.
 
 ---
 
 ## Features
 
-- **Stacked dual-rail layout.** One scroll surface with old and new lines interleaved per hunk, dual line-number gutter via `statuscolumn`.
-- **Side-by-side layout** from the same hunk model. Switch layout at runtime; it is a pure re-render.
-- **Word-level highlighting.** Sub-line emphasis on the tokens that actually changed, delta-style.
-- **Treesitter syntax** projected through the line map, so the diff reads like source instead of a grey block.
-- **Real buffer lines** for code. Search, yank, and motions all work; the hunk model is canonical and the buffer is a projection of it.
-- **One diff engine** (`vim.diff()`, histogram) shared by every source.
+- **stacked dual-rail layout.** one scroll surface with old and new lines interleaved per hunk, dual line-number gutter via `statuscolumn`.
+- **side-by-side layout** from the same hunk model. switch layout at runtime; it is a pure re-render.
+- **pr review in the diff.** inline comment threads, pending-review drafts, thread resolve, per-file viewed-state, ci checks, and lifecycle actions (merge, checkout, ready/draft, close), backed by a go sidecar that owns the github api.
+- **file panel and staging.** persistent sidebar with the changed-file tree, status icons, +/- counts, and hunk- and file-level staging.
+- **file history.** single-file and branch-range log, walked commit-by-commit, each step a diff through the same engine.
+- **3-way merge tool.** base/ours/theirs through the n-column renderer, resolved into the working-tree file.
+- **word-level highlighting** and **treesitter syntax** on by default, so the diff reads like source instead of a grey block.
+- **real buffer lines** for code. search, yank, and motions all work; the hunk model is canonical and the buffer is a projection of it.
+- **one diff engine** (`vim.diff()`, histogram) shared by every source.
 
 ---
 
@@ -44,9 +51,8 @@ The rendering core is done: local diffs render in both layouts with word-level h
 
 - Neovim 0.10+ (uses `vim.system`, `vim.fs.relpath`, `vim.diff`)
 - git on `PATH`
-- A treesitter parser for the languages you diff (optional, for the syntax pass)
-
-The Go sidecar is a later phase and is not needed for local diffs.
+- a treesitter parser for the languages you diff (optional, for the syntax pass)
+- for pr review: the go sidecar (built from this repo) and `gh` authenticated. not needed for local diffs.
 
 ---
 
@@ -69,7 +75,7 @@ The Go sidecar is a later phase and is not needed for local diffs.
 
 ## Usage
 
-`:Differ [revspec]` diffs the current file against a resolved source. The grammar mirrors git and diffview:
+`:Differ [revspec]` diffs the current file against a resolved source. the grammar mirrors git:
 
 | Command | Diffs |
 |---|---|
@@ -131,7 +137,7 @@ require("differ").setup({
     granularity = "word",        -- "word" | "char"
     similarity_threshold = 0.5,  -- line-pairing cutoff for word-level diffing
   },
-  comments = {                   -- PR review threads (later phase)
+  comments = {                   -- pr review threads
     inline = true,
     collapsed = false,
   },
@@ -150,7 +156,7 @@ require("differ").setup({
     toggle_fold = "za",                                              -- history (range mode)
   },
   relative_dates = false,        -- "3 days ago" instead of YYYY-MM-DD wherever a date shows
-  sidecar_bin = nil,             -- override the Go sidecar path (later phase)
+  sidecar_bin = nil,             -- override the go sidecar path
 })
 ```
 
@@ -193,7 +199,7 @@ lua/differ/
   syntax/           # treesitter pass projected through the line map
   ui/               # statuscolumn rail, paint, highlight groups
   git/              # local source: rev-spec grammar + git I/O
-cmd/differ-sidecar/ # Go GitHub sidecar (later phase)
+cmd/differ-sidecar/ # go github sidecar
 test/
   unit/             # pure-Lua busted specs (no Neovim runtime)
   nvim/             # headless-nvim specs (extmark/window assertions)
@@ -202,21 +208,6 @@ test/
 The design lives in `docs/overview.md` and is kept in lock-step with the code.
 
 </details>
-
----
-
-## Roadmap
-
-Each phase ships independently. Phases 1 and 2 alone replace daily diffview use.
-
-| Phase | Deliverable |
-|---|---|
-| 1 | Core: hunk model, both renderers, line map, gutter rail, hunk nav, word-level highlighting, treesitter syntax |
-| 2 | Local frontend: git sources, file picker, file panel, hunk staging, file history |
-| 3 | Go sidecar: protocol, v1 GitHub methods, caching, supervised Lua client |
-| 4 | PR review: picker, viewed-state, inline comment threads, draft reviews, thread resolve, checks, lifecycle actions |
-| 5 | 3-way merge tool: N-column renderer, editable result buffer, take ours / theirs / both |
-| 6 | Live layer: optimistic updates, prefetch, warm cache, server-pushed overlay refresh, large-file streaming |
 
 ---
 
