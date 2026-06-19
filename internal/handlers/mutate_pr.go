@@ -13,7 +13,7 @@ type setFileViewedParams struct {
 	Viewed bool   `json:"viewed"`
 }
 
-// setFileViewed syncs a file's per-viewer viewed flag to GitHub (§7.3).
+// setFileViewed syncs a file's per-viewer viewed flag to GitHub.
 func (d Deps) setFileViewed(ctx context.Context, params json.RawMessage) (any, error) {
 	var p setFileViewedParams
 	if err := decode(params, &p); err != nil {
@@ -36,7 +36,7 @@ type mergePRParams struct {
 	Body         string `json:"body"`
 }
 
-// mergePR merges the PR with the requested method (§7.3); the github layer pre-checks
+// mergePR merges the PR with the requested method; the github layer pre-checks
 // mergeability and returns conflict if it can't merge cleanly.
 func (d Deps) mergePR(ctx context.Context, params json.RawMessage) (any, error) {
 	var p mergePRParams
@@ -72,7 +72,7 @@ type setPRStateParams struct {
 	State string `json:"state"`
 }
 
-// setPRState transitions the PR lifecycle: ready / draft / closed / open (§7.3).
+// setPRState transitions the PR lifecycle: ready / draft / closed / open.
 func (d Deps) setPRState(ctx context.Context, params json.RawMessage) (any, error) {
 	var p setPRStateParams
 	if err := decode(params, &p); err != nil {

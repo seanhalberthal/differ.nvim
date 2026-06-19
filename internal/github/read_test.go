@@ -40,7 +40,7 @@ func TestGetFileVersions(t *testing.T) {
 	}
 }
 
-// HeadSHA resolves the live head (not the base) for the §7.5 TOCTOU guard.
+// HeadSHA resolves the live head (not the base) for the TOCTOU guard.
 func TestHeadSHA(t *testing.T) {
 	c := newClient(func(r *http.Request) (*http.Response, error) {
 		if strings.HasSuffix(r.URL.Path, "/pulls/3") {

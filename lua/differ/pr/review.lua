@@ -1,8 +1,8 @@
--- the pending-review draft lifecycle (§8.2): start/reattach a draft, submit it as one
+-- the pending-review draft lifecycle: start/reattach a draft, submit it as one
 -- batch with an event, or discard it. while session.review_id is set, comments compose
 -- as drafts (pr/comment.lua); submit/discard clear it and return to immediate mode.
--- every mutation carries the session head as expected_head for the §7.5 TOCTOU guard,
--- and reacts to a conflict by refreshing rather than auto-retrying (§11)
+-- every mutation carries the session head as expected_head for the TOCTOU guard,
+-- and reacts to a conflict by refreshing rather than auto-retrying
 
 local client = require("differ.pr.client")
 
@@ -61,7 +61,7 @@ function M.start(session)
 end
 
 -- :Differ pr review resume — reattach the current session to its pending draft and jump to a
--- pending comment (position restore, §8.2). a no-op notice when there's no draft
+-- pending comment (position restore). a no-op notice when there's no draft
 ---@param session table
 function M.reattach(session)
     client.get_pending_review(session.pr, function(err, res)

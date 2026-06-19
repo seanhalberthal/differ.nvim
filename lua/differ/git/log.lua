@@ -1,4 +1,4 @@
--- git log parsing for file history (§8.4): pure mapping from a history request to
+-- git log parsing for file history: pure mapping from a history request to
 -- `git log` args, and a parser for its output. no nvim or subprocess here (exec
 -- lives in git/init.lua) so this stays unit-testable under plain busted
 

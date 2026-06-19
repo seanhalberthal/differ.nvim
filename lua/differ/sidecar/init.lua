@@ -1,4 +1,4 @@
--- the sidecar client (§7.6): one supervised differ-sidecar process per nvim
+-- the sidecar client: one supervised differ-sidecar process per nvim
 -- instance, speaking newline-delimited JSON over stdio. request(method, params, cb)
 -- calls cb(err, result) where err is { code, message, retry_after? } (mirroring the
 -- wire envelope) or nil on success. the hello handshake gates every other request;
@@ -57,7 +57,7 @@ local function plugin_bin()
     return root .. "/bin/differ-sidecar"
 end
 
--- resolve the binary: config override, then the bundled bin/, then $PATH (§13.3).
+-- resolve the binary: config override, then the bundled bin/, then $PATH.
 local function resolve_bin()
     local cfg = require("differ").get_config()
     if cfg.sidecar_bin and cfg.sidecar_bin ~= "" then

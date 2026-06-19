@@ -1,5 +1,5 @@
 // Package logx provides the sidecar's structured logger. it writes to stderr
-// ONLY; stdout is reserved for the protocol stream (§7.5). tokens must never be
+// ONLY; stdout is reserved for the protocol stream. tokens must never be
 // passed to it.
 package logx
 

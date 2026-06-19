@@ -31,7 +31,7 @@ end
 
 -- open a View from an already-built DiffModel. the git frontend and panel use
 -- this; `opts` overrides the layout/context defaults and carries the hunk-staging
--- capability (§8.1) for worktree-status panels
+-- capability for worktree-status panels
 ---@class differ.DiffModelOpts
 ---@field layout? differ.Layout
 ---@field context? integer
@@ -82,7 +82,7 @@ function M.diff(spec)
     return M.diff_model(model, { layout = spec.layout, context = spec.context })
 end
 
--- open a local git change set from a rev spec (§8.1), DiffviewOpen-style: the file
+-- open a local git change set from a rev spec, DiffviewOpen-style: the file
 -- panel plus the first file's diff. the entry-point keymaps bind to this, e.g.
 -- `require("differ").open("main...")` for the branch-total diff. a string is one
 -- rev token; pass a table for multi-arg forms
@@ -92,7 +92,7 @@ function M.open(spec)
     return require("differ.git").panel({ rev = spec, open_first = true })
 end
 
--- open (or toggle) the file panel over a local git change set (§8.6). `opts` are
+-- open (or toggle) the file panel over a local git change set. `opts` are
 -- runtime, not setup config: `rev` (rev spec, string or args), `position`
 -- ("bottom"|"top"|"left"|"right"), `listing` ("tree"|"name"), `height`, `width`.
 -- the live panel is reachable via `require("differ.panel").current()` for runtime
@@ -100,12 +100,12 @@ end
 ---@param opts table|nil
 ---@return differ.Panel|nil
 function M.panel(opts)
-    -- always show a file: the diff window is the session anchor (§8.1), so a panel
+    -- always show a file: the diff window is the session anchor, so a panel
     -- never opens without one
     return require("differ.git").panel(vim.tbl_extend("keep", { open_first = true }, opts or {}))
 end
 
--- open single-file history (§8.4, the `dh` keymap): a commit-list panel over the
+-- open single-file history (the `dh` keymap): a commit-list panel over the
 -- file's `git log`, driving the diff view per commit. `opts.path` defaults to the
 -- current buffer; `require("differ").file_history()` on the file you're editing
 ---@param opts table|nil
@@ -114,7 +114,7 @@ function M.file_history(opts)
     return require("differ.git").history(opts or {})
 end
 
--- open branch-range history (§8.4, the `dp` keymap): a commit-list panel over a
+-- open branch-range history (the `dp` keymap): a commit-list panel over a
 -- rev-range (`opts.range`, e.g. "origin/HEAD...HEAD"); commits expand to their files
 -- and selecting/stepping a file drives the diff view
 ---@param opts table|nil
@@ -123,7 +123,7 @@ function M.range_history(opts)
     return require("differ.git").range_history(opts or {})
 end
 
--- open the PR frontend (§8.2): pick a PR (or jump to `opts.number`) and drive the
+-- open the PR frontend: pick a PR (or jump to `opts.number`) and drive the
 -- reused file panel + diff view from the sidecar's blobs. `opts` are runtime:
 -- `number`, `filter` ("open"/"mine"/"review_requested"), `coords` ({owner, repo}
 -- override for forks). `require("differ").pr_open({ number = 42 })`
@@ -157,7 +157,7 @@ function M.active_view()
     return nil
 end
 
--- jump-to-file (§8.1, the `de` keymap): from the diff under the cursor, close the
+-- jump-to-file (the `de` keymap): from the diff under the cursor, close the
 -- session and open the real file on disk at the mapped line. works from the panel
 -- too (acts on the driven view); a no-op with a notice when no diff is active
 function M.jump_to_file()
@@ -168,7 +168,7 @@ function M.jump_to_file()
     view:jump_to_file()
 end
 
--- edit-in-review (§8.1, the `df` keymap): open the real worktree file in a transient
+-- edit-in-review (the `df` keymap): open the real worktree file in a transient
 -- editable window at the mapped line, keeping the session; `:w` re-sources the diff.
 -- works from the panel too (acts on the driven view); a no-op with a notice when no
 -- diff is active

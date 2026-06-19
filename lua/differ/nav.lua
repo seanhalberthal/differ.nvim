@@ -51,7 +51,7 @@ function M.prev_hunk(map, lnum)
     return best
 end
 
--- the real-file (new-side) line for jump-to-file (§6.2): the cursor line's own
+-- the real-file (new-side) line for jump-to-file: the cursor line's own
 -- `new` if it has one, else the nearest following line's `new` (a deleted/meta
 -- line maps forward to the next live new line), else the nearest preceding new
 -- (cursor sitting past the last new line). nil when the map has no new side at

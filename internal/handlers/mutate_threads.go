@@ -13,9 +13,9 @@ type resolveThreadParams struct {
 	Resolved bool   `json:"resolved"`
 }
 
-// resolveThread toggles a review thread's resolved state (§7.3). the thread node id
+// resolveThread toggles a review thread's resolved state. the thread node id
 // is global, but pr is validated for protocol consistency (and keys the thread-cache
-// invalidation, §7.5).
+// invalidation).
 func (d Deps) resolveThread(ctx context.Context, params json.RawMessage) (any, error) {
 	var p resolveThreadParams
 	if err := decode(params, &p); err != nil {

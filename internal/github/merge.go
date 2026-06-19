@@ -7,7 +7,7 @@ import (
 )
 
 // MergePR merges the PR with the given method (MERGE / SQUASH / REBASE). it pre-flights
-// mergeability and returns conflict rather than firing a doomed merge (§7.5); when
+// mergeability and returns conflict rather than firing a doomed merge; when
 // deleteBranch is set the head branch is deleted after a successful merge, best-effort
 // (a delete failure does not fail the merge, which is already done). subject/body set
 // the merge commit message.

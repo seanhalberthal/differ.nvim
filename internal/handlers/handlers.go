@@ -72,10 +72,10 @@ func NewRegistry(d Deps) Registry {
 	}
 }
 
-// guardHead enforces the §7.5 TOCTOU guard: when the client pins expected (the head sha
+// guardHead enforces the TOCTOU guard: when the client pins expected (the head sha
 // it anchored the review against), resolve the PR's current head and reject with conflict
 // if it moved, so a comment never lands against a commit the user wasn't looking at. an
-// empty expected skips the check (the client didn't pin one); the §7.5 latency note keeps
+// empty expected skips the check (the client didn't pin one); the latency note keeps
 // this round-trip off the read hot path, so it costs one REST call per anchored mutation
 func (d Deps) guardHead(ctx context.Context, owner, repo string, number int, expected string) error {
 	if expected == "" {

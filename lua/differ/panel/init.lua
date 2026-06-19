@@ -1,10 +1,10 @@
--- file panel (§8.6): the persistent sidebar listing a change set. source-agnostic
+-- file panel: the persistent sidebar listing a change set. source-agnostic
 -- by design: it renders FileEntry sections, owns fold/listing state and the
 -- window, and calls `on_select(entry)` when a file is chosen. the local frontend
 -- feeds it git changes (phase 2); the PR frontend reuses it verbatim (phase 4),
 -- only swapping the model source. it owns *which file*; the View owns *how it
 -- renders*, so selecting a file re-sources the existing View (separation of
--- concerns, §8.6). pure tree/line logic lives in panel/tree.lua + panel/render.lua
+-- concerns). pure tree/line logic lives in panel/tree.lua + panel/render.lua
 
 local tree = require("differ.panel.tree")
 local render = require("differ.panel.render")
@@ -48,7 +48,7 @@ local STATUS_HL = {
 ---@field title string|nil
 ---@field entries differ.FileEntry[]
 
--- file-level staging hooks (§8.6 slice C); supplied by the local frontend for the
+-- file-level staging hooks (slice C); supplied by the local frontend for the
 -- working-tree source, nil otherwise (rev-pair lists aren't stageable)
 ---@class differ.panel.Actions
 ---@field stage fun(entry: differ.FileEntry)
@@ -100,9 +100,9 @@ Panel.__index = Panel
 ---@field on_external_change? fun() -- re-source list + diff after an outside git change
 ---@field root? string  -- repo/worktree path shown in the panel header
 ---@field footer? string -- rev spec shown under "Showing changes for:"
----@field actions? differ.panel.Actions -- file-level staging hooks (§8.6 slice C)
----@field keymaps? table<string, string|string[]|false> -- resolved panel action -> lhs (§4.3)
----@field extra_keymaps? differ.panel.ExtraMap[] -- session maps (§8.2 pr viewed nav)
+---@field actions? differ.panel.Actions -- file-level staging hooks (slice C)
+---@field keymaps? table<string, string|string[]|false> -- resolved panel action -> lhs
+---@field extra_keymaps? differ.panel.ExtraMap[] -- session maps (pr viewed nav)
 ---@field on_step? fun(direction: "next"|"prev", left: differ.FileEntry|nil, new: differ.FileEntry)
 
 ---@class differ.panel.ExtraMap
@@ -342,7 +342,7 @@ function Panel:_highlight()
                     { end_col = m.context_end, hl_group = "differPanelContext" }
                 )
             end
-            -- dim a viewed PR file's checkbox so reviewed files recede (§8.2)
+            -- dim a viewed PR file's checkbox so reviewed files recede
             if m.viewed_col and m.entry and m.entry.viewed then
                 vim.api.nvim_buf_set_extmark(
                     self.bufnr,
@@ -945,7 +945,7 @@ function Panel:_restore_cursor(lnum)
     end
 end
 
--- runtime API (§8.3-style per-view control, not setup config) ----------------
+-- runtime API (per-view control, not setup config) ----------------
 
 -- switch the listing mode live (tree / name)
 ---@param listing "tree"|"name"

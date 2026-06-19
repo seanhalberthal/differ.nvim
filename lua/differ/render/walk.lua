@@ -15,7 +15,7 @@ local M = {}
 -- math.huge for whole-file view. callers handle the empty (no-hunk) case.
 -- every unchanged line is emitted (the buffer holds full content); the middle of
 -- a gap that exceeds `context` lead/tail is flagged `foldable` so the renderer can
--- mark it for a native fold rather than dropping it (§8.3)
+-- mark it for a native fold rather than dropping it
 ---@param model differ.DiffModel
 ---@param context integer
 ---@param old_line_count integer

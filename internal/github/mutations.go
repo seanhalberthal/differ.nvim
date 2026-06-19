@@ -67,7 +67,7 @@ query PRNodeID($owner: String!, $repo: String!, $number: Int!) {
 // addThreadMutation opens a new thread inside a pending review ($reviewId, a draft).
 // immediate (published) comments take the REST path instead, so this only drafts.
 // line/side anchor the end of the range, startLine/startSide the start of a multi-line
-// range (null for single-line; cross-side ranges are valid, §7.5).
+// range (null for single-line; cross-side ranges are valid).
 const addThreadMutation = `
 mutation AddThread($reviewId: ID!, $path: String!, $body: String!, $line: Int!, $side: DiffSide!, $startLine: Int, $startSide: DiffSide) {
   addPullRequestReviewThread(input: {pullRequestReviewId: $reviewId, path: $path, body: $body, line: $line, side: $side, startLine: $startLine, startSide: $startSide}) {

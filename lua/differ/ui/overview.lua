@@ -1,7 +1,7 @@
--- pure builder for the PR overview page (§8.2). data in -> { lines, highlights } out,
+-- pure builder for the PR overview page. data in -> { lines, highlights } out,
 -- no vim state, so it's unit-tested like ui/thread.lua. the timeline merges comments +
 -- review verdicts and sorts by created_at; relative time is injected (opts.reltime) to
--- keep the builder deterministic. §3 scope guard: comments + review verdicts only — no
+-- keep the builder deterministic. scope guard: comments + review verdicts only — no
 -- reactions, labels, assignees, or events
 
 local M = {}
@@ -17,7 +17,7 @@ local VERDICT = {
     DISMISSED = { label = "review dismissed", hl = "differOverviewMeta" },
 }
 
--- the PR state word -> its highlight group (no dedicated state groups in §10, so the
+-- the PR state word -> its highlight group (no dedicated state groups in so the
 -- open/merged states ride the approved green and a closed PR the changes orange)
 ---@type table<string, string>
 local STATE_HL = {

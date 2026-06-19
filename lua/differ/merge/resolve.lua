@@ -1,4 +1,4 @@
--- pure conflict-resolution splice (§8.5): replace a region's marker block with a chosen
+-- pure conflict-resolution splice: replace a region's marker block with a chosen
 -- slab. no nvim API, so it's unit-tested; the session re-parses the live buffer after each
 -- splice (markers vanish with the block) rather than tracking offsets, so resolving a
 -- region by keymap and hand-editing converge on the same source of truth

@@ -12,28 +12,28 @@ local M = {}
 -- static links: body diff layers and structural panel chrome
 ---@type table<string, vim.api.keyset.highlight>
 local LINKS = {
-    -- thread overlay (§6.4): all thread groups (range background, panel-tinted chrome,
+    -- thread overlay: all thread groups (range background, panel-tinted chrome,
     -- meta, body) ride the palette + theme bg in thread_groups
     -- our own cursor-line overlay: CursorLine is low-priority when it has no
     -- foreground (`:h hl-CursorLine`), so it loses to the diff line backgrounds; we
     -- repaint it as a line_hl_group above them. links to CursorLine to track the theme
     differCursorLine = { link = "CursorLine" },
-    -- staged-hunk overlay (§8.1): a muted full-line bg replacing the vivid
+    -- staged-hunk overlay: a muted full-line bg replacing the vivid
     -- add/delete so a staged hunk reads as set-aside rather than a live change
     differStagedLine = { link = "CursorLine" },
-    -- file panel chrome (§8.6)
+    -- file panel chrome
     differPanelHeader = { link = "Title" },
     differPanelRoot = { link = "Directory" },
     differPanelHelp = { link = "Comment" },
     differPanelDir = { link = "Directory" },
-    -- dimmed "·parent/" trailer after a basename in the name listing (§8.6)
+    -- dimmed "·parent/" trailer after a basename in the name listing
     differPanelContext = { link = "Comment" },
-    -- history panel commit rows (§8.4): the author column (sha reuses differPanelDir,
+    -- history panel commit rows: the author column (sha reuses differPanelDir,
     -- the date reuses differPanelHelp, the counts reuse the panel count groups) and
     -- the ref-decoration tag in branch-range mode
     differHistoryAuthor = { link = "Identifier" },
     differHistoryRef = { link = "Special" },
-    -- overview page (§8.2): the title rides the theme Title; the meta/body/verdict/author
+    -- overview page: the title rides the theme Title; the meta/body/verdict/author
     -- groups are palette-derived in overview_groups
     differOverviewTitle = { link = "Title" },
 }
@@ -99,7 +99,7 @@ local function palette()
     }
 end
 
--- map the panel's status/count groups onto the palette (status letters, §8.6
+-- map the panel's status/count groups onto the palette (status letters,
 -- "Status presentation", and the right-aligned +N -M counts)
 ---@param p table<string, integer>
 ---@return table<string, vim.api.keyset.highlight>
@@ -113,12 +113,12 @@ local function status_groups(p)
         differPanelUntracked = { fg = p.green },
         differPanelCountAdd = { fg = p.green },
         differPanelCountDelete = { fg = p.red },
-        -- the staged-hunk gutter glyph (§8.1): green for "in the index"
+        -- the staged-hunk gutter glyph: green for "in the index"
         differStagedSign = { fg = p.green },
     }
 end
 
--- thread overlay groups (§6.4): every chunk sits on a faint panel tint so the comment
+-- thread overlay groups: every chunk sits on a faint panel tint so the comment
 -- block reads as a non-code overlay (the jetbrains look), not more code. the chrome
 -- (spine + header/footer rules + author) is state-coloured: open active (blue),
 -- resolved receded (grey), pending draft (orange); meta is dim; body keeps the normal
@@ -144,7 +144,7 @@ local function thread_groups(p)
     }
 end
 
--- overview page groups (§8.2): the meta chrome is dim, the body keeps Normal, and the
+-- overview page groups: the meta chrome is dim, the body keeps Normal, and the
 -- verdict + author groups ride the palette (approved green, requested-changes orange,
 -- author blue) so a review verdict reads at a glance. the title links Title in LINKS
 ---@param p table<string, integer>
@@ -159,10 +159,10 @@ local function overview_groups(p)
     }
 end
 
--- merge-tool region backgrounds (§8.5): one quiet tint per side so each conflict slab
+-- merge-tool region backgrounds: one quiet tint per side so each conflict slab
 -- reads as that version (ours green, theirs blue, base muted) and the result's
 -- unresolved block stands out in the conflict orange. same blend recipe as the diff
--- line backgrounds, bg-only so native syntax shows through. the UX-polish slice (§8.5)
+-- line backgrounds, bg-only so native syntax shows through. the UX-polish slice
 -- adds: active vs inactive intensities (the block under the cursor at full strength, the
 -- rest faint), the ▌ input-slab sign, a stronger input body tint, and the resolved flash
 ---@param p table<string, integer>

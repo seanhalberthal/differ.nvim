@@ -1,6 +1,6 @@
 package github
 
-// client-facing result shapes. these track the frozen §7.3 contract and must not
+// client-facing result shapes. these track the frozen contract and must not
 // drift; the github wire shapes they are built from live in dtos.go.
 
 // PR is one row in the list_prs result.
@@ -56,7 +56,7 @@ type FileBlob struct {
 
 // Thread is one review thread in the get_threads result. ID is the root comment's
 // numeric id (the reply anchor); ThreadID is the GraphQL node id resolve_thread
-// operates on. Side/StartSide are LEFT/RIGHT (§6.2); StartSide/StartLine are set
+// operates on. Side/StartSide are LEFT/RIGHT; StartSide/StartLine are set
 // only on range threads. IsPending is true for an unsubmitted draft thread.
 type Thread struct {
 	ID        int64           `json:"id"`
@@ -116,7 +116,7 @@ type Check struct {
 }
 
 // Timeline is the get_timeline result: PR conversation comments and submitted review
-// verdicts, the minimal timeline the overview page interleaves (§3 keeps reactions /
+// verdicts, the minimal timeline the overview page interleaves (keeps reactions /
 // labels / events out). the frontend merges + sorts the two lists by created_at.
 type Timeline struct {
 	Comments []TimelineComment `json:"comments"`

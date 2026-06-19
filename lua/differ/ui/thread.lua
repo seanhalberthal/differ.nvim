@@ -1,4 +1,4 @@
--- pure builder for the inline thread overlay (§6.4): a thread -> the virt_lines chunk
+-- pure builder for the inline thread overlay: a thread -> the virt_lines chunk
 -- rows for the header-rule + left-spine style. each row is a list of { text, hl }
 -- chunks ready for an extmark's virt_lines; every chunk carries a real highlight group
 -- so apply + golden tests need no nil handling. no vim state, so it's unit-tested like

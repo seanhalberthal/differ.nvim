@@ -46,7 +46,7 @@ func (c *Client) GetFileVersions(ctx context.Context, owner, repo string, number
 	return &FileVersions{Base: baseRes.blob, Head: headBlob}, nil
 }
 
-// HeadSHA resolves a PR's current head commit sha (via prRefs), for the §7.5 TOCTOU
+// HeadSHA resolves a PR's current head commit sha (via prRefs), for the TOCTOU
 // guard: the mutate handlers compare it against the client's pinned expected_head and
 // reject with conflict if the head moved since the review was anchored.
 func (c *Client) HeadSHA(ctx context.Context, owner, repo string, number int) (string, error) {
@@ -67,7 +67,7 @@ func (c *Client) prRefs(ctx context.Context, owner, repo string, number int) (ba
 
 // rawBlob fetches a path's bytes at ref via the Contents API raw media type. a 404
 // means the path is absent at that ref, reported as Missing rather than an error.
-// ref is a commit sha, so the result is immutable and cached forever (§7.5).
+// ref is a commit sha, so the result is immutable and cached forever.
 func (c *Client) rawBlob(ctx context.Context, owner, repo, path, ref string) (FileBlob, error) {
 	if c.tokenErr != nil {
 		return FileBlob{}, c.tokenErr

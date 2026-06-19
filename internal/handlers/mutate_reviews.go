@@ -7,7 +7,7 @@ import (
 	"github.com/seanhalberthal/differ.nvim/internal/protocol"
 )
 
-// startReview creates (or reattaches to) the viewer's pending review (§7.3).
+// startReview creates (or reattaches to) the viewer's pending review.
 func (d Deps) startReview(ctx context.Context, params json.RawMessage) (any, error) {
 	var p prParams
 	if err := decode(params, &p); err != nil {
@@ -24,11 +24,11 @@ type submitReviewParams struct {
 	ReviewID string `json:"review_id"`
 	Event    string `json:"event"`
 	Body     string `json:"body"`
-	// the head sha the review was anchored against; gates the submit on the §7.5 TOCTOU guard
+	// the head sha the review was anchored against; gates the submit on the TOCTOU guard
 	ExpectedHead string `json:"expected_head"`
 }
 
-// submitReview finalizes a pending review as one batch (§7.3).
+// submitReview finalizes a pending review as one batch.
 func (d Deps) submitReview(ctx context.Context, params json.RawMessage) (any, error) {
 	var p submitReviewParams
 	if err := decode(params, &p); err != nil {
@@ -54,7 +54,7 @@ type discardReviewParams struct {
 	ReviewID string `json:"review_id"`
 }
 
-// discardReview deletes a pending review and its unsubmitted comments (§7.3).
+// discardReview deletes a pending review and its unsubmitted comments.
 func (d Deps) discardReview(ctx context.Context, params json.RawMessage) (any, error) {
 	var p discardReviewParams
 	if err := decode(params, &p); err != nil {

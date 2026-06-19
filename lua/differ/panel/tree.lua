@@ -1,4 +1,4 @@
--- file-tree model for the panel (§8.6): turn a flat FileEntry list into a folded
+-- file-tree model for the panel: turn a flat FileEntry list into a folded
 -- directory tree, and flatten it to display rows (tree or flat). pure lua, no
 -- nvim API; the structural logic is unit-testable; rendering/highlighting and
 -- the window live in panel/init.lua
@@ -12,7 +12,7 @@ local M = {}
 ---@field deletions integer
 ---@field staged boolean|nil       -- which local section it belongs to
 ---@field previous_path string|nil -- renames/copies
----@Field viewed boolean|nil       -- PR only (§8.2)
+---@Field viewed boolean|nil       -- PR only
 
 ---@class differ.panel.Node
 ---@field kind "dir"|"file"

@@ -459,7 +459,7 @@ describe(":Differ panel", function()
     end)
 end)
 
-describe(":Differ panel staging (§8.6 slice C)", function()
+describe(":Differ panel staging (slice C)", function()
     local Panel = require("differ.panel")
 
     -- the FileEntry for `path`, optionally pinned to staged/unstaged, via the panel
@@ -595,7 +595,7 @@ describe(":Differ panel staging (§8.6 slice C)", function()
         p:close()
     end)
 
-    it("honours a disabled panel action from setup config (§4.3 keymaps)", function()
+    it("honours a disabled panel action from setup config (keymaps)", function()
         local root = fresh_repo()
         write(root .. "/a.lua", "local x = 2\nreturn x\n")
         vim.cmd.edit(root .. "/a.lua")
@@ -610,7 +610,7 @@ describe(":Differ panel staging (§8.6 slice C)", function()
     end)
 end)
 
-describe(":Differ diff hunk staging (§8.1)", function()
+describe(":Differ diff hunk staging", function()
     local Panel = require("differ.panel")
 
     -- p:select returns focus to the panel, so the View lives in the origin window

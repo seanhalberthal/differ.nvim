@@ -89,12 +89,12 @@ M.defaults = {
         unstage_all = "U",
         more_context = "d=", -- diff
         less_context = "d-",
-        edit_file = "df", -- diff: edit-in-review, uncommitted (worktree/staged) diffs (§8.1)
-        goto_file = "de", -- diff: open the real file and end the session (§8.1)
+        edit_file = "df", -- diff: edit-in-review, uncommitted (worktree/staged) diffs
+        goto_file = "de", -- diff: open the real file and end the session
         discard = "X", -- panel
         refresh = "R",
         toggle_fold = "za", -- history (range mode)
-        -- merge tool (§8.5), bound on the result buffer. nav + take-this resolution,
+        -- merge tool, bound on the result buffer. nav + take-this resolution,
         -- mirroring diffview's conflict keys
         next_conflict = "]x", -- merge: jump to the next/prev conflict
         prev_conflict = "[x",

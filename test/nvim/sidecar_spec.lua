@@ -1,5 +1,5 @@
 -- runs under headless nvim: drives the real differ-sidecar binary (bin/) over the
--- live stdio protocol, so it doubles as the §7.6 client + handshake smoke test. needs
+-- live stdio protocol, so it doubles as the client + handshake smoke test. needs
 -- the binary built (make go-build); skips with a clear message when it is absent.
 local sidecar = require("differ.sidecar")
 

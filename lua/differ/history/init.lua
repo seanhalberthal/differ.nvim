@@ -1,6 +1,6 @@
--- history panel (§8.4): a sidebar listing commits, newest first. it owns *which
+-- history panel: a sidebar listing commits, newest first. it owns *which
 -- commit/file*; the View owns *how the diff renders*, so a selection re-sources the
--- single driven View (the separation the file panel uses, §8.6). two modes:
+-- single driven View (the separation the file panel uses). two modes:
 --   file  — single-file history: each commit is one diff (commit vs its parent)
 --   range — branch-range history: commits expand to their files (lazy); a file is
 --           one diff. ]f/[f walk files across commits
@@ -17,7 +17,7 @@ local CTRL_U = vim.api.nvim_replace_termcodes("<C-u>", true, false, true)
 local HEADER_LINES = 2 -- path/range + the "Help: g?" hint, before the commit rows
 local AUTHOR_MAX = 18 -- cap the author column so a long name can't shove subjects off-screen
 
--- file-row status letter colours (mirrors the file panel's palette, §8.6)
+-- file-row status letter colours (mirrors the file panel's palette)
 ---@type table<string, string>
 local STATUS_HL = {
     A = "differPanelAdd",
@@ -69,7 +69,7 @@ History.__index = History
 ---@field on_file? fun(commit: differ.git.Commit, entry: differ.FileEntry)
 ---@field on_close? fun()
 ---@field path string
----@field keymaps? table<string, string|string[]|false> -- resolved history action -> lhs (§4.3)
+---@field keymaps? table<string, string|string[]|false> -- resolved history action -> lhs
 ---@field relative_dates? boolean
 ---@field position? "bottom"|"top"|"left"|"right"
 

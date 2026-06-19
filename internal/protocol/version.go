@@ -1,6 +1,6 @@
 package protocol
 
-// Version is the wire-protocol version (§7.2); bump on any breaking change so
+// Version is the wire-protocol version; bump on any breaking change so
 // the client can surface "rebuild your sidecar" instead of undefined behaviour.
 const Version = 1
 

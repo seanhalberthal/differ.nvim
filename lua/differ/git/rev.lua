@@ -33,10 +33,10 @@ local function merge_base_ref(base, head, label)
     return { kind = "merge_base", base = base, head = head, label = label }
 end
 
--- resolve :Differ args into a source pairing (§8.1). mirrors git/diffview rev
+-- resolve :Differ args into a source pairing. mirrors git/diffview rev
 -- syntax so existing muscle memory carries over. these forms cover the whole
 -- daily loop (uncommitted / branch-total / range / since-rev); staged-only has no
--- entry (staged/unstaged is a file-panel concern (§8.6), not a diff-open flag):
+-- entry (staged/unstaged is a file-panel concern, not a diff-open flag):
 --   (none)              -> HEAD vs worktree              (all uncommitted changes)
 --   <a>..<b>            -> <a> vs <b>                     (plain two-dot range)
 --   <a>...<b>           -> merge-base(a,b) vs <b>         (three-dot; since they diverged)
@@ -140,7 +140,7 @@ end
 ---@field path string
 ---@field previous_path string|nil  -- source path on rename/copy
 
--- parse `git status --porcelain=v1 -z -uall` (§8.6 slice B). each record is
+-- parse `git status --porcelain=v1 -z -uall` (slice B). each record is
 -- `XY<sp><path>`; X is the staged (HEAD↔index) state, Y the unstaged
 -- (index↔worktree) state. rename/copy records (X or Y = R/C) carry the original
 -- path in the *next* NUL field, which we attach as previous_path
@@ -166,8 +166,8 @@ function M.parse_status(out)
     return entries
 end
 
--- parse `git diff --numstat -z` into a path -> {additions, deletions} map (§8.6
--- slice B). a normal record is `<add>\t<del>\t<path>`; a rename leaves the path
+-- parse `git diff --numstat -z` into a path -> {additions, deletions} map
+-- (slice B). a normal record is `<add>\t<del>\t<path>`; a rename leaves the path
 -- field empty and emits the old then new path as the next two NUL fields (we key
 -- on the new path). binary files report `-` counts, which become 0
 ---@param out string
@@ -193,7 +193,7 @@ function M.parse_numstat(out)
     return counts
 end
 
--- parse `git diff --name-only --diff-filter=U -z` into the conflicted paths (§8.5).
+-- parse `git diff --name-only --diff-filter=U -z` into the conflicted paths.
 -- each path appears once; the trailing NUL leaves an empty field we drop
 ---@param out string
 ---@return string[]

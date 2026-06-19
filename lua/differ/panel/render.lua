@@ -53,7 +53,7 @@ end
 ---@field help string|nil   -- keymap hint (rendered as "Help: <help>")
 
 -- build the panel buffer lines and a parallel metadata list (one per line). an
--- optional header (repo path + `Help: g?` + blank) prefixes the sections (§8.6),
+-- optional header (repo path + `Help: g?` + blank) prefixes the sections,
 -- and an optional `footer` rev appends a "Showing changes for:" block.
 -- `icon_for(path)` (supplied by the runtime layer, nvim-web-devicons, so this
 -- stays pure) returns a `(glyph, hl_group)` pair painted before each filename.
@@ -110,7 +110,7 @@ function M.lines(blocks, header, icon_for, footer, width)
                 }
             else
                 local e = row.entry
-                -- viewed-checkbox column (§8.2/§8.6), PR sections only: gated on the
+                -- viewed-checkbox column, PR sections only: gated on the
                 -- entry carrying a `viewed` boolean, so local entries (viewed == nil)
                 -- leave the column off and the local panel is untouched
                 local checkbox = ""

@@ -1,7 +1,7 @@
 -- view lifecycle: own one derived buffer per render column, lay them into windows
 -- (one for stacked, a scroll-bound pair for split), and hold each column's map.
 -- buffers + maps are regenerated atomically on re-render; the gutter rail, the
--- diff highlight layer, and the treesitter syntax pass (§6.5) are refreshed from
+-- diff highlight layer, and the treesitter syntax pass are refreshed from
 -- the map; overlays are extmark-only
 
 local render = require("differ.render")
@@ -53,7 +53,7 @@ local armed_view = nil
 ---@field map differ.LineMap
 ---@field side differ.ColumnSide
 
--- the hunk-staging capability the git frontend supplies per source (§8.1). the
+-- the hunk-staging capability the git frontend supplies per source. the
 -- view keeps its diff frozen and marks staged hunks in place rather than re-reading
 -- git, so it tracks per-hunk state and calls `apply` to patch one hunk: `reverse`
 -- false stages, true unstages, `offset` shifts past already-staged hunks before it.
@@ -81,7 +81,7 @@ local armed_view = nil
 ---@field extra_keymaps differ.panel.ExtraMap[]|nil  -- session-supplied buffer maps (pr unviewed nav)
 ---@field on_rerender fun()|nil  -- session hook after a re-render, to re-apply overlays (pr threads)
 ---@field on_cursor fun()|nil  -- session hook on cursor move in a diff window (pr thread cursor-expand)
----@field edit_win integer|nil  -- transient editable real-file window (edit-in-review, §8.1)
+---@field edit_win integer|nil  -- transient editable real-file window (edit-in-review)
 ---@field id integer  -- per-view id, for the close-guard augroup name
 ---@field _suppress_close boolean  -- true while we close a diff window ourselves (relayout/teardown)
 ---@field _closing boolean  -- re-entrancy guard once a user close has begun
@@ -153,7 +153,7 @@ function View:_init_staged()
 end
 
 -- a stable, file-shaped buffer name so the statusline/winbar shows the file path
--- instead of `[Scratch]` (§8.1). the `differ://` scheme keeps it distinct from the
+-- instead of `[Scratch]`. the `differ://` scheme keeps it distinct from the
 -- real file (a bare relative name would resolve to the same absolute path and
 -- collide) and marks it non-editable; the path stays last so `:t` is the basename.
 -- the default stacked view is just `differ://<path>`; a split's two columns get an
@@ -183,7 +183,7 @@ end
 -- give the buffer the file's filetype so the statusline / lualine shows it, but
 -- keep native treesitter and regex syntax off: the buffer holds interleaved
 -- old+new lines that aren't valid source, and differ paints its own syntax pass
--- through the line map (§6.5), so a native highlighter would only mangle it
+-- through the line map, so a native highlighter would only mangle it
 ---@param bufnr integer
 ---@param path string
 local function set_filetype(bufnr, path)
@@ -286,7 +286,7 @@ function View:rerender(opts)
     -- on open / layout toggle), so rerender doesn't, avoiding a double-apply
 end
 
--- overlay the staged-hunk marks (§8.1): a muted full-line bg over every line of a
+-- overlay the staged-hunk marks: a muted full-line bg over every line of a
 -- staged hunk plus the gutter glyph. repainted on every render and on each toggle;
 -- buffer content is untouched (the diff stays frozen). a no-op off a staging view,
 -- which leaves the gutter at its normal width
@@ -403,7 +403,7 @@ end
 
 -- swap the diffed file in place: same windows/layout/context, new model. the
 -- panel calls this when a different file is selected so the View is re-sourced,
--- not recreated (§8.6 separation of concerns). column count is layout-determined,
+-- not recreated (separation of concerns). column count is layout-determined,
 -- so it never changes here, no relayout. `staging` rides along because the stage
 -- direction is per-file (a staged entry unstages, an unstaged one stages).
 -- `opts.focus_line` is a new-side file line to snap to (a re-source of the same
@@ -429,7 +429,7 @@ function View:set_source(model, staging, opts)
     end
 end
 
--- swap the layout for this view (a pure re-render behind the map contract, §8.3).
+-- swap the layout for this view (a pure re-render behind the map contract).
 -- column count changes (1 <-> 2), so re-lay the windows after
 ---@param layout differ.Layout
 function View:set_layout(layout)
@@ -507,12 +507,12 @@ function View:_setup_window(winid, bufnr)
     bind(bufnr, km.less_context, function()
         self:adjust_context(-1)
     end, "differ: less context")
-    -- go-to-file (§8.1): leave the session and open the real file. available wherever
+    -- go-to-file: leave the session and open the real file. available wherever
     -- the source is file-backed (jump_to_file notifies if not)
     bind(bufnr, km.goto_file, function()
         self:jump_to_file()
     end, "differ: go to the real file")
-    -- edit-in-review (§8.1): only on an uncommitted diff (worktree or staged), where
+    -- edit-in-review: only on an uncommitted diff (worktree or staged), where
     -- the file on disk is editable. rev-pair / history / PR diffs aren't
     if self:_editable_source() then
         bind(bufnr, km.edit_file, function()
@@ -534,7 +534,7 @@ function View:_setup_window(winid, bufnr)
     bind(bufnr, km.scroll_up, function()
         self:quarter_scroll("up")
     end, "differ: scroll up a quarter page")
-    -- stage / unstage the hunk under the cursor (§8.1), hunk-level here vs file-level
+    -- stage / unstage the hunk under the cursor, hunk-level here vs file-level
     -- in the panel. bound for the whole worktree-status session; the per-file
     -- direction is checked at call time (the buffer is read-only, so shadowing native
     -- substitute / undo is harmless)
@@ -568,7 +568,7 @@ function View:step_file(direction, wrap)
         panel:goto_file(direction, true, wrap) -- keep focus in the diff window
         return
     end
-    -- file history (§8.4): one file, so ]f / [f step commits instead
+    -- file history: one file, so ]f / [f step commits instead
     local history = require("differ.history").current()
     if history and history:is_open() then
         history:step(direction, true)
@@ -630,7 +630,7 @@ function View:goto_hunk(direction)
     end
 end
 
--- the buffer line to land on when a file opens (§8.1): the start of the first
+-- the buffer line to land on when a file opens: the start of the first
 -- unstaged hunk, the natural place to begin reviewing, falling back to the first
 -- hunk when everything is already staged, or nil for a file with no hunks
 ---@param col differ.ViewColumn
@@ -758,8 +758,8 @@ function View:_focus_last_hunk()
     end
 end
 
--- the index of the hunk the cursor sits in, via the focused column's map (§8.1
--- staging). nil on a context / meta / unchanged line that belongs to no hunk
+-- the index of the hunk the cursor sits in, via the focused column's map
+-- (staging). nil on a context / meta / unchanged line that belongs to no hunk
 ---@return integer|nil
 function View:_hunk_index_under_cursor()
     local col = self:_focused_column()
@@ -788,7 +788,7 @@ function View:_apply_hunk(idx, want_staged)
 end
 
 -- s: stage the hunk under the cursor, or advance if there's nothing to stage here.
--- the review flow (§8.1): the first s on a hunk stages it (staying put so the mark
+-- the review flow: the first s on a hunk stages it (staying put so the mark
 -- is visible), a second s (now staged) moves to the next hunk, and at the last hunk
 -- it steps to the next file, which opens on its first unstaged hunk. so repeated s
 -- walks the whole change set, accepting hunk by hunk
@@ -850,7 +850,7 @@ function View:_retreat_review()
     end
 end
 
--- toggle the staged state of the hunk under the cursor (§8.1), marking it in place
+-- toggle the staged state of the hunk under the cursor, marking it in place
 -- rather than re-reading: the diff stays put and the opposite key (u after s) keeps
 -- working on it
 ---@param want_staged boolean
@@ -891,7 +891,7 @@ function View:unstage_all()
     end
 end
 
--- stage / unstage every hunk (§8.1). forward order keeps the running offset correct
+-- stage / unstage every hunk. forward order keeps the running offset correct
 -- as the index shifts under each apply; the panel refreshes once after the batch.
 -- returns whether anything changed (false when already wholly in the target state),
 -- so S/U can fall through to file stepping
@@ -915,9 +915,9 @@ function View:_toggle_all(want_staged)
     return changed
 end
 
--- jump-to-file (§8.1, the `de` verb): leave the diff and open the real file on disk
--- at the line under the cursor, mapped to its new-side line (§6.2). the session lives
--- in its own tabpage (§8.6), so this ends it (dropping that tab) and opens the real
+-- jump-to-file (the `de` verb): leave the diff and open the real file on disk
+-- at the line under the cursor, mapped to its new-side line. the session lives
+-- in its own tabpage, so this ends it (dropping that tab) and opens the real
 -- file back in the tab :Differ was invoked from, where you'll keep working
 function View:jump_to_file()
     local root = self.model.root
@@ -957,7 +957,7 @@ function View:jump_to_file()
 end
 
 -- the real-file (new-side) position for de/df: the cursor line's mapped `new` line
--- (§6.2) plus its column, but the column is carried only when the cursor's own line
+-- plus its column, but the column is carried only when the cursor's own line
 -- maps 1:1 to a new-side line. a deleted/meta line redirects to a different line where
 -- the column is meaningless, so it lands at column 0 there
 ---@param col differ.ViewColumn
@@ -986,7 +986,7 @@ function View:_editable_source()
     return new == "INDEX" and old == "HEAD"
 end
 
--- edit-in-review (§8.1): pop the real working-tree file into a transient editable
+-- edit-in-review: pop the real working-tree file into a transient editable
 -- window at the cursor's mapped new-side line, keeping the session. unlike
 -- jump_to_file this never tears down the diff: you edit, `:w`, and the worktree
 -- watcher re-sources the diff in place (cursor held near its hunk). the projection
@@ -1018,7 +1018,7 @@ function View:edit_file()
     local col = self:_focused_column()
     local win = (col.winid and vim.api.nvim_win_is_valid(col.winid)) and col.winid
         or vim.api.nvim_get_current_win()
-    local target, tcol = self:_file_pos(col, win) -- §6.2
+    local target, tcol = self:_file_pos(col, win)
 
     -- staged diff: unstage the file and re-source to its unstaged index↔worktree view
     -- so the edit lands on a diff that reflects it. driven explicitly (the watcher's

@@ -377,7 +377,7 @@ func TestPostCommentReplyRoutes(t *testing.T) {
 	}
 }
 
-// ── the §7.5 TOCTOU guard ───────────────────────────────────────────────────────
+// ── the TOCTOU guard ────────────────────────────────────────────────────────────
 // an anchored mutation pins expected_head; the handler resolves the live head and
 // rejects with conflict when it moved. an unpinned mutation skips the round-trip.
 

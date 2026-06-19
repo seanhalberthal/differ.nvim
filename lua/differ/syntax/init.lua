@@ -1,8 +1,8 @@
--- syntax highlight pass (§6.5): treesitter highlights for the diffed code,
+-- syntax highlight pass: treesitter highlights for the diffed code,
 -- gitHub/JetBrains-style, but never by parsing the derived buffer (that jumble of
 -- interleaved old/new, meta separators and filler would mis-parse). instead parse
 -- the *real* old_text/new_text, collect captures in source coords, and project
--- them onto the buffer through the line map's from_old/from_new (§6.2 derived
+-- them onto the buffer through the line map's from_old/from_new (derived
 -- behaviour). extmark-only, in its own namespace, so it refreshes independently of
 -- the diff layer and never touches buffer text or the map (invariant 2)
 
@@ -12,7 +12,7 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("differ.syntax")
 
--- §6.5 layering: syntax foreground sits *under* the diff line background (paint
+-- layering: syntax foreground sits *under* the diff line background (paint
 -- uses 100) and word-level spans (200), so the diff state always reads on top
 local PRIORITY = 90
 

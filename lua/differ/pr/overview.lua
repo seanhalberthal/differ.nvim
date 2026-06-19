@@ -1,4 +1,4 @@
--- the PR overview home (§8.2): a read-only pre-review page with the PR summary + a
+-- the PR overview home: a read-only pre-review page with the PR summary + a
 -- minimal timeline (conversation comments + submitted review verdicts). it is a step
 -- *before* the review proper — no file panel, just a dedicated page filling the session
 -- tab. e/r enter the review (build the panel + diff), q backs out. the pure layout
@@ -166,7 +166,7 @@ end
 
 -- the window the page takes over: the pre-review page window, or — coming back from the
 -- review (:Differ pr overview) — the content window, closing the diff + hiding the panel
--- so the page fills the tab again (§8.1 safe teardown keeps the session alive)
+-- so the page fills the tab again (safe teardown keeps the session alive)
 ---@param session table
 ---@return integer|nil
 local function target_window(session)

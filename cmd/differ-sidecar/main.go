@@ -1,5 +1,5 @@
 // differ-sidecar speaks newline-delimited JSON over stdio to the Lua client.
-// it owns all GitHub API interaction for the PR-review frontend (§4, §7).
+// it owns all GitHub API interaction for the PR-review frontend.
 package main
 
 import (

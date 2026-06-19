@@ -1,4 +1,4 @@
--- pure helpers for the pr viewed-state nav (§8.2): the unviewed scan and the
+-- pure helpers for the pr viewed-state nav: the unviewed scan and the
 -- entry->index lookup. kept vim-free so the direction / no-wrap decision is unit-
 -- tested under busted. a file is "viewed" when entry.viewed is truthy (map_files
 -- already collapses VIEWED and DISMISSED to that boolean)

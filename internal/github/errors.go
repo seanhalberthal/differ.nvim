@@ -11,7 +11,7 @@ import (
 
 // the github package is the single producer of mapped I/O codes (auth, not_found,
 // rate_limited, network). everything funnels through mapHTTP / mapGraphQL so the
-// closed set (§7.1) is enforced in one place.
+// closed set is enforced in one place.
 
 // restErrorBody is GitHub's REST error envelope; its message is safe to surface
 // (it never contains the token, which lives only in request headers).

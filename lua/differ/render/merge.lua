@@ -1,4 +1,4 @@
--- the 3-way merge renderer (§8.5): a MergeModel becomes one column per visible side
+-- the 3-way merge renderer: a MergeModel becomes one column per visible side
 -- plus the result spine. pure (no nvim API), so the column assembly + slab location are
 -- unit-tested. unlike the diff renderers each merge column is a real single-source file
 -- (a stage, or the worktree result), so the session highlights it natively and only
@@ -6,7 +6,7 @@
 --
 -- input columns show the full stage files; a region's slab is located by an ordered
 -- forward search (slabs appear in file order), so a unique run highlights and a
--- not-found run simply doesn't — no highlight beats a wrong highlight (§6.3)
+-- not-found run simply doesn't — no highlight beats a wrong highlight
 
 local to_lines = require("differ.util.text").to_lines
 

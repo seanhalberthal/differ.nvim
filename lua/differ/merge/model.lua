@@ -1,4 +1,4 @@
--- the 3-way merge model (§8.5): the full ours/base/theirs stage contents plus the
+-- the 3-way merge model: the full ours/base/theirs stage contents plus the
 -- ordered conflict regions parsed from the worktree file (the result spine slices 2-3
 -- render and edit). the stages are the authoritative column content, so they're correct
 -- under any merge.conflictStyle; the marker parse only locates the regions

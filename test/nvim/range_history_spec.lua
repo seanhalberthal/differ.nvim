@@ -1,5 +1,5 @@
 -- runs under headless nvim against a throwaway git repo: exercises branch-range
--- history (§8.4, dp): the range commit walk, per-commit file listing (incl. a root
+-- history (dp): the range commit walk, per-commit file listing (incl. a root
 -- commit), the panel expanding commits to nested files, on_file driving the view,
 -- and ]f/[f walking files across commits
 local git_src = require("differ.git")

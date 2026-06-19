@@ -1,6 +1,6 @@
--- read-only CI checks view (§8.2): :Differ pr checks lists the status-check rollup and
+-- read-only CI checks view: :Differ pr checks lists the status-check rollup and
 -- each check, coloured on the semantic palette; <CR> opens the selected check's url via
--- vim.ui.open. no rerun/dispatch (§7.4 reserved); the sidecar fetch is the only I/O
+-- vim.ui.open. no rerun/dispatch (reserved); the sidecar fetch is the only I/O
 
 local client = require("differ.pr.client")
 

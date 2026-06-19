@@ -12,7 +12,7 @@ local rails = {}
 local staged = {}
 
 -- pre-format the gutter string for every line of a column from its map. pure, so
--- the statuscolumn callback only does an O(1) index per redraw (§11). a unified
+-- the statuscolumn callback only does an O(1) index per redraw. a unified
 -- column shows both rails (old left / new right); a side column shows only its
 -- own number; absent sides and meta/filler rows render as blanks
 ---@param column differ.Column
@@ -55,7 +55,7 @@ function M.set(bufnr, strings)
     rails[bufnr] = strings
 end
 
--- register a buffer's staged lines (§8.1 hunk staging). presence of an entry (even
+-- register a buffer's staged lines (hunk staging). presence of an entry (even
 -- empty) reserves a one-cell staged gutter so the rail width is stable as hunks
 -- toggle; the glyph paints on staged lines. unset for non-staging views
 ---@param bufnr integer

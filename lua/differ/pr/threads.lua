@@ -1,4 +1,4 @@
--- inline thread overlay (§6.4): fetch the PR's review threads once per session, anchor
+-- inline thread overlay: fetch the PR's review threads once per session, anchor
 -- each to a derived buffer row through the line map, stack same-row threads oldest
 -- first, and paint them as extmark `virt_lines` below the anchor (plus a range
 -- background for multi-line threads). the overlay is extmark-only: it never touches the
@@ -37,7 +37,7 @@ end
 
 -- the derived buffer row for source line `line` in `index` (a from_old/from_new map).
 -- an out-of-context anchor (no exact key) degrades to the nearest rendered line rather
--- than being dropped (§6.4); nil only when nothing is rendered on that side
+-- than being dropped; nil only when nothing is rendered on that side
 ---@param index table<integer, integer>
 ---@param line integer
 ---@return integer|nil
@@ -57,7 +57,7 @@ end
 
 -- a thread's ordering key: its first comment's creation time. ISO-8601/RFC3339 UTC
 -- sorts lexically as chronologically, so a string compare is the explicit oldest-first
--- order (never trust API order, §6.4)
+-- order (never trust API order)
 ---@param t table
 ---@return string
 local function created_key(t)
@@ -120,7 +120,7 @@ end
 -- ── apply (extmark-only) ──────────────────────────────────────────────────────────
 
 -- paint the range background over start_line..line on the thread's side, for an
--- expanded multi-line thread (§6.4). single-line threads have no range
+-- expanded multi-line thread. single-line threads have no range
 ---@param view table
 ---@param t table
 local function paint_range(view, t)
@@ -189,7 +189,7 @@ function M.apply(session)
     end
 
     -- split would desync the side-by-side alignment and clip the text, so it gets a
-    -- compact end-of-line marker instead of the inline box (§6.4 / option A); the full
+    -- compact end-of-line marker instead of the inline box (option A); the full
     -- thread reads in stacked. stacked renders the boxes inline
     local split = view.layout == "split"
     local reltime = time_formatter()
@@ -256,7 +256,7 @@ end
 
 -- flip the explicit collapse override for every thread in `anchor`'s group, to the
 -- opposite of the group's current effective state, so one gc toggles a group together
--- (§6.4). the default expanded baseline differs by layout: stacked expands the row the
+--. the default expanded baseline differs by layout: stacked expands the row the
 -- cursor peeks; split shows the float by default while the cursor is on the row. so gc
 -- collapses the inline box (stacked) or hides the float (split), and back. re-applying
 -- the overlay is the caller's job
@@ -351,7 +351,7 @@ function M.refresh(session)
     end)
 end
 
--- ── split peek float (§6.4) ───────────────────────────────────────────────────────
+-- ── split peek float ──────────────────────────────────────────────────────────────
 -- split can't carry inline boxes without desyncing the columns, so the thread under
 -- the cursor reads in a floating popover instead. one reusable float per session,
 -- re-pointed as the cursor moves and closed when it leaves a thread row. it reuses the

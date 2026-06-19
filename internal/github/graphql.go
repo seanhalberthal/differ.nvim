@@ -10,7 +10,7 @@ import (
 	"github.com/seanhalberthal/differ.nvim/internal/protocol"
 )
 
-// graphql posts a raw GraphQL query (§7.5: no go-gh, no typed dep) and decodes
+// graphql posts a raw GraphQL query (no go-gh, no typed dep) and decodes
 // the data field into out. top-level GraphQL errors map via mapGraphQL even on a
 // 200; HTTP-level failures map via mapHTTP.
 func (c *Client) graphql(ctx context.Context, query string, vars map[string]any, out any) error {

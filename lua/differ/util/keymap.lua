@@ -1,4 +1,4 @@
--- buffer-local keymap binding from the resolved keymaps config (§4.3). the one
+-- buffer-local keymap binding from the resolved keymaps config. the one
 -- place that understands the action value shape: a string, a list of strings
 -- (multiple binds), or false/nil to disable
 

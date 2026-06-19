@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// cache is the sidecar's in-process memo (§7.5). blobs are keyed by commit sha and
+// cache is the sidecar's in-process memo. blobs are keyed by commit sha and
 // live forever (a path's bytes at a sha are immutable, and prRefs always resolves a
 // fresh sha so a moved head simply misses); threads are keyed per PR and flushed
 // wholesale by the review mutations. one mutex guards all of it, since the server

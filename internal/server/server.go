@@ -1,4 +1,4 @@
-// Package server is the stdio engine (§7.5): a single stdin reader fans requests
+// Package server is the stdio engine: a single stdin reader fans requests
 // out to per-request goroutines, all funnelling responses through one serialized
 // stdout writer. concurrency-safe by construction; stdout stays protocol-pure.
 package server

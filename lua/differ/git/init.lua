@@ -1,7 +1,7 @@
--- local git source: the runtime half of the diff source layer (§8.1). resolves a
+-- local git source: the runtime half of the diff source layer. resolves a
 -- repo, turns a rev spec (rev.lua) into concrete old/new content, and opens a
 -- view. local diffs are fast and offline, so reads run synchronously here: the
--- latency discipline (§7.5) is about the PR sidecar hot path, not local git.
+-- latency discipline is about the PR sidecar hot path, not local git.
 -- pure parsing/grammar lives in git/rev.lua; this module only does I/O + wiring
 
 local rev = require("differ.git.rev")
@@ -11,7 +11,7 @@ local watch = require("differ.git.watch")
 
 local M = {}
 
--- the three working-tree side refs (§8.6 slice B). staged diffs read HEAD↔index,
+-- the three working-tree side refs (slice B). staged diffs read HEAD↔index,
 -- unstaged diffs read index↔worktree; an untracked file is absent from the index
 -- so its index read returns nil and the diff renders as a pure add
 local HEAD = { kind = "rev", rev = "HEAD", label = "HEAD" }
@@ -19,7 +19,7 @@ local INDEX = { kind = "index", label = "INDEX" }
 local WORKTREE = { kind = "worktree", label = "WORKTREE" }
 
 -- git's canonical empty-tree object: the "old" side for a root commit (no parent),
--- so its files list and read as pure adds (§8.4 history)
+-- so its files list and read as pure adds (history)
 local EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 ---@param msg string
@@ -46,7 +46,7 @@ local function chomp(s)
     return (s:gsub("%s+$", ""))
 end
 
--- run a session in its own tabpage (like diffview, §8.6): the tab :Differ was invoked
+-- run a session in its own tabpage (like diffview): the tab :Differ was invoked
 -- from is never touched, so ending the session drops the tab and returns there with
 -- the dashboard / file / window layout intact. `tab split` carries the current buffer
 -- in, so it stays displayed in the invoking tab and isn't wiped when the diff takes
@@ -80,7 +80,7 @@ function M.root(path)
     return out and chomp(out) or nil
 end
 
--- check out a PR's head branch locally (§7.3 client-side action): fetch the ref from
+-- check out a PR's head branch locally (client-side action): fetch the ref from
 -- origin, then check it out. fetch first so the branch exists even before its first
 -- local pull; if a local branch of that name already tracks the ref, checkout lands on
 -- it. returns true on success, or false + the git stderr to surface
@@ -142,7 +142,7 @@ function M.read(ref, root, relpath)
     return git({ "show", spec }, root) -- nil if the path is absent in that tree
 end
 
--- one conflict stage's full content for `relpath`: 1=base, 2=ours, 3=theirs (§8.5).
+-- one conflict stage's full content for `relpath`: 1=base, 2=ours, 3=theirs.
 -- `git show :N:path`. an absent stage (a modify/delete conflict has no :2:/:3:) reads
 -- as "", mirroring M.read's nil->empty convention so the column renders an add/delete
 ---@param root string
@@ -153,7 +153,7 @@ function M.read_stage(root, relpath, stage)
     return git({ "show", (":%d:"):format(stage) .. relpath }, root) or ""
 end
 
--- repo-relative paths of the unmerged (conflicted) files, in git's order (§8.5)
+-- repo-relative paths of the unmerged (conflicted) files, in git's order
 ---@param root string
 ---@return string[]
 function M.conflicted(root)
@@ -174,7 +174,7 @@ function M.is_conflicted(root, relpath)
     return false
 end
 
--- list changed files for a resolved source (used by the picker/panel, §8.6)
+-- list changed files for a resolved source (used by the picker/panel)
 ---@param source differ.git.Source
 ---@param root string
 ---@return differ.git.ChangedFile[]
@@ -188,7 +188,7 @@ function M.changed_files(source, root)
     return rev.parse_name_status(out)
 end
 
--- the commits behind a history request (§8.4), newest first. an empty list on git
+-- the commits behind a history request, newest first. an empty list on git
 -- failure (e.g. the path has no history). pure arg-building/parsing live in git/log.lua
 ---@param root string
 ---@param opts differ.git.LogOpts
@@ -198,7 +198,7 @@ function M.log_commits(root, opts)
 end
 
 -- the "old" side for a commit's own diff: its first parent, or the empty tree when
--- it's a root commit (so the commit lists/reads as pure adds). §8.4 history
+-- it's a root commit (so the commit lists/reads as pure adds). history
 ---@param root string
 ---@param sha string
 ---@return differ.git.Ref
@@ -210,7 +210,7 @@ local function parent_or_empty(root, sha)
     return { kind = "rev", rev = EMPTY_TREE, label = "(root)" }
 end
 
--- the commits in a rev-range, newest first, for branch-range history (§8.4, dp).
+-- the commits in a rev-range, newest first, for branch-range history (dp).
 -- `--no-merges` drops merge commits; a symmetric `a...b` range adds `--right-only`
 -- to keep only the right side (the branch's own commits), mirroring the dp flow
 ---@param root string
@@ -225,7 +225,7 @@ function M.range_commits(root, range)
     return M.log_commits(root, { extra = extra })
 end
 
--- the files one commit changed, as panel FileEntry[] with +N -M counts (§8.4 range
+-- the files one commit changed, as panel FileEntry[] with +N -M counts (range
 -- history): the commit diffed against its parent (or the empty tree for a root commit)
 ---@param root string
 ---@param sha string
@@ -283,7 +283,7 @@ local function head_branch(root)
     return (name and name ~= "HEAD") and name or nil
 end
 
--- the "Showing changes for:" footer label (§8.6): the user's rev spec, or the
+-- the "Showing changes for:" footer label: the user's rev spec, or the
 -- resolved HEAD commit for the default uncommitted view (mirrors diffview)
 ---@param args string[]
 ---@param root string
@@ -339,8 +339,8 @@ function M.file_entries(source, root)
     return out
 end
 
--- working-tree status as panel sections: Staged / Unstaged / Untracked (§8.6
--- slice B). git status compares HEAD/index/worktree, so it only models the
+-- working-tree status as panel sections: Staged / Unstaged / Untracked
+-- (slice B). git status compares HEAD/index/worktree, so it only models the
 -- default HEAD-vs-worktree source; rev-pair sources use file_entries instead.
 -- a file edited in both index and worktree (e.g. "MM") appears in both Staged
 -- (X status, HEAD↔index counts) and Unstaged (Y status, index↔worktree counts).
@@ -390,8 +390,8 @@ function M.status_sections(root)
     }
 end
 
--- file-level staging ops driven from the panel (§8.6 slice C); each is whole-file
--- and operates on the repo root. hunk-level staging stays in the diff view (§8.1)
+-- file-level staging ops driven from the panel (slice C); each is whole-file
+-- and operates on the repo root. hunk-level staging stays in the diff view
 
 ---@param root string
 ---@param path string
@@ -415,7 +415,7 @@ function M.unstage_all(root)
     git({ "reset", "-q", "HEAD" }, root)
 end
 
--- apply a single-hunk patch to the index (§8.1 hunk staging). `--unidiff-zero`
+-- apply a single-hunk patch to the index (hunk staging). `--unidiff-zero`
 -- because the patch carries no context (built straight from the hunk model);
 -- `--reverse` unstages. git apply is atomic, so a non-applying patch fails cleanly
 -- with stderr rather than half-writing. returns ok + git's stderr on failure
@@ -477,7 +477,7 @@ local function repo_root()
 end
 
 -- true when `source` is the default HEAD-vs-worktree view: the only source git
--- status can model as Staged/Unstaged/Untracked sections (§8.6 slice B). rev-pair
+-- status can model as Staged/Unstaged/Untracked sections (slice B). rev-pair
 -- and merge-base sources (old is a sha, not HEAD) stay a single counted list
 ---@param source differ.git.Source -- resolved
 ---@return boolean
@@ -485,7 +485,7 @@ local function is_worktree_status(source)
     return source.old.kind == "rev" and source.old.rev == "HEAD" and source.new.kind == "worktree"
 end
 
--- the configured base branch resolved to a ref, for the `base` shortcut (§8.1).
+-- the configured base branch resolved to a ref, for the `base` shortcut.
 -- explicit config wins; else the remote's default (origin/HEAD -> "origin/main");
 -- else the first of main/master that exists. nil when none resolve
 ---@param root string
@@ -522,7 +522,7 @@ function M.resolve_base()
     return base
 end
 
--- :Differ panel: open (or toggle) the file panel (§8.6) over a git change set.
+-- :Differ panel: open (or toggle) the file panel over a git change set.
 -- selecting a file re-sources the one View in place rather than spawning a new
 -- one. `opts.rev` is the rev spec; position/listing/height/width pass through to
 -- the panel and are runtime-adjustable via Panel.current(). `opts.open_first`
@@ -638,7 +638,7 @@ function M.panel(opts)
     local watcher ---@type differ.git.Watcher|nil -- fs watcher, set for worktree panels
     local on_edit_unstage ---@type fun(path: string)|nil -- assigned below; passed to the view
 
-    -- hunk-level staging (§8.1): plain modifications (status "M", same path both
+    -- hunk-level staging: plain modifications (status "M", same path both
     -- sides) stage by hunk; a new file (untracked "?" or staged add "A") diffs
     -- empty<->content as one whole-file hunk, so it stages as a unit; renames/
     -- copies/deletes stay file-level in the panel. the view keeps its diff frozen
@@ -767,7 +767,7 @@ function M.panel(opts)
         return out
     end
 
-    -- edit-in-review on a staged diff (§8.1, flow C): unstage the whole file so the
+    -- edit-in-review on a staged diff (flow C): unstage the whole file so the
     -- staged change returns to the worktree, then re-source the diff to the file's now-
     -- unstaged view so the edit lands somewhere the diff reflects. driven explicitly by
     -- the view (not the watcher, whose re-source is suppressed by the staging signature)
@@ -881,7 +881,7 @@ function M.panel(opts)
     return panel
 end
 
--- :Differ log [path] / the `dh` verb: single-file history (§8.4). lists the file's
+-- :Differ log [path] / the `dh` verb: single-file history. lists the file's
 -- commits in a dedicated history panel; selecting/stepping a commit re-sources the
 -- one driven View to that commit vs its parent. read-only (no staging). `opts.path`
 -- defaults to the current buffer's file; position passes through to the panel
@@ -957,7 +957,7 @@ function M.history(opts)
     return history
 end
 
--- :Differ log <range> / the `dp` verb: branch-range history (§8.4). lists the
+-- :Differ log <range> / the `dp` verb: branch-range history. lists the
 -- range's commits in the history panel; a commit expands to its files (lazy), and
 -- selecting/stepping a file re-sources the one driven View to that file at the
 -- commit vs its parent. one expandable panel, read-only (no staging)

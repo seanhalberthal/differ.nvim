@@ -17,7 +17,7 @@ type getFileVersionsParams struct {
 	Head string `json:"head"`
 }
 
-// getFileVersions returns the full base/head blobs for one PR file (§7.3).
+// getFileVersions returns the full base/head blobs for one PR file.
 func (d Deps) getFileVersions(ctx context.Context, params json.RawMessage) (any, error) {
 	var p getFileVersionsParams
 	if err := decode(params, &p); err != nil {

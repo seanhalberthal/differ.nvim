@@ -1,5 +1,5 @@
 -- build a git-apply-ready unified diff for a single hunk, straight from the hunk
--- model (never derived from buffer text, §8.1). zero context, so callers apply
+-- model (never derived from buffer text). zero context, so callers apply
 -- with `git apply --unidiff-zero`; the `@@` line numbers come from the model and
 -- match the index/worktree content exactly. the missing-final-newline marker is
 -- emitted when a hunk reaches an unterminated end of file, so staging the last
@@ -23,7 +23,7 @@ end
 -- file sides, read only to detect an unterminated end of file. assumes a plain
 -- modification (same path both sides); renames/adds/deletes stage file-level.
 -- `offset` shifts both hunk starts by the net line delta of the staged hunks
--- before this one (§8.1): the frozen view's line numbers are from open time, but
+-- before this one: the frozen view's line numbers are from open time, but
 -- git applies against the live index, so a preceding staged insert/delete moves
 -- this hunk's position. both starts shift equally, so the body stays valid for a
 -- forward (stage) apply (checks `-` lines) and a reverse (unstage) apply (`+` lines)

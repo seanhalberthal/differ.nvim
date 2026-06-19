@@ -1,4 +1,4 @@
--- the shared compose window (§6.4): a real split window over a markdown scratch buffer
+-- the shared compose window: a real split window over a markdown scratch buffer
 -- for authoring a comment, a reply, or a submit-review body. a split (not a float) so
 -- the statusline shows the editing mode and the window behaves like any other. stacked
 -- opens it below the diff (like the df edit window); split opens it on the far left

@@ -1,4 +1,4 @@
--- the PR frontend session (§8.2, §8.6): pick a PR, list its files in the reused file
+-- the PR frontend session: pick a PR, list its files in the reused file
 -- panel (with a viewed column), and diff each file from the sidecar's base/head
 -- blobs. it mirrors git/init.lua's module-local session shape, owning the session
 -- tab + panel + the one driven View; the panel and View are source-agnostic, so this
@@ -24,7 +24,7 @@ local function notify(msg, level)
 end
 
 -- a typed sidecar error -> a single notification, with an actionable hint for the
--- codes the user can fix (§7.6)
+-- codes the user can fix
 ---@type table<string, string>
 local CODE_HINT = {
     auth = "run gh auth login",
@@ -83,10 +83,10 @@ local STATUS = {
     unchanged = "M",
 }
 
--- map get_pr `files` to panel FileEntry[] (§8.6). pure, so the mapping is unit-tested:
+-- map get_pr `files` to panel FileEntry[]. pure, so the mapping is unit-tested:
 -- counts/previous_path pass through, status collapses to its letter code, and
 -- viewed_state collapses to the boolean the panel renders as a checkbox (VIEWED and
--- DISMISSED both count as viewed, §8.2)
+-- DISMISSED both count as viewed)
 ---@param files table[]
 ---@return differ.FileEntry[]
 function M.map_files(files)
@@ -118,7 +118,7 @@ local function reltime(ts)
     return date.relative(epoch)
 end
 
--- predictive prefetch (§9.1 phase 6, minimal slice): warm the immediate neighbours of
+-- predictive prefetch (phase 6, minimal slice): warm the immediate neighbours of
 -- the shown file into the per-path memo so sequential ]f/[f / ]u/[u don't wait on a
 -- round-trip. best-effort and silent: a speculative read, not a user-initiated one, so
 -- a failure just leaves the memo cold (the on-demand path fetches it later) and never
@@ -177,9 +177,9 @@ local function show_file(entry, focus_line)
             session.view = require("differ").diff_model(model, {
                 staging = false,
                 can_stage = false,
-                extra_keymaps = session.diff_extra_keymaps, -- ]u/[u on the diff surface (§8.2)
+                extra_keymaps = session.diff_extra_keymaps, -- ]u/[u on the diff surface
                 -- re-apply the thread overlay after a layout/context re-render, and
-                -- expand the thread under the cursor as it moves (§6.4)
+                -- expand the thread under the cursor as it moves
                 on_rerender = function()
                     require("differ.pr.threads").apply(session)
                 end,
@@ -189,8 +189,8 @@ local function show_file(entry, focus_line)
             })
         end
         prefetch_around(entry) -- warm the neighbours so the next step is instant
-        require("differ.pr.threads").refresh(session) -- (re)paint inline comment threads (§6.4)
-        -- resume position restore (§8.2): once the target file is rendered, drop the
+        require("differ.pr.threads").refresh(session) -- (re)paint inline comment threads
+        -- resume position restore: once the target file is rendered, drop the
         -- cursor on the pending comment's mapped row, then clear the one-shot focus
         local pf = session.pending_focus
         if pf and pf.path == entry.path and session.view and session.view:is_open() then
@@ -212,7 +212,7 @@ local function show_file(entry, focus_line)
     -- pass entry.path, not previous_path: the sidecar fetches one path at both refs,
     -- so a rename shows its head content as an add (true rename diffing is a later
     -- sidecar concern; this keeps open-and-navigate correct for the common cases).
-    -- the pinned shas skip the sidecar's prRefs round-trip (§7.5 latency discipline)
+    -- the pinned shas skip the sidecar's prRefs round-trip (latency discipline)
     local refs = { base = session.pr_meta.base_sha, head = session.pr_meta.head_sha }
     client.get_file_versions(session.pr, entry.path, refs, function(err, vers)
         if err then
@@ -227,8 +227,8 @@ local function show_file(entry, focus_line)
 end
 
 -- flip a file's viewed flag optimistically, repaint, then reconcile to the server's
--- returned viewed_state (roll back + flag on error, §11). cheap and idempotent, so
--- the one optimistic update phase 4 allows (§8.2). a no-op if already at `target`
+-- returned viewed_state (roll back + flag on error). cheap and idempotent, so
+-- the one optimistic update phase 4 allows. a no-op if already at `target`
 ---@param entry differ.FileEntry
 ---@param target boolean
 local function mark_viewed(entry, target)
@@ -247,7 +247,7 @@ local function mark_viewed(entry, target)
             session.panel:repaint()
             return notify_err(err)
         end
-        -- reconcile: DISMISSED counts as viewed, like map_files (§8.2)
+        -- reconcile: DISMISSED counts as viewed, like map_files
         local server = res and (res.viewed_state == "VIEWED" or res.viewed_state == "DISMISSED")
         if server ~= nil and server ~= entry.viewed then
             entry.viewed = server
@@ -286,7 +286,7 @@ local function nav_unviewed(direction, keep_focus)
     session.panel:goto_path(session.entries[target].path, keep_focus)
 end
 
--- panel on_step: a forward ]f/[f step marks the file just left as viewed (§8.2).
+-- panel on_step: a forward ]f/[f step marks the file just left as viewed.
 -- backward never marks, and a plain select (which never steps) marks nothing
 ---@param direction "next"|"prev"
 ---@param left differ.FileEntry|nil
@@ -309,7 +309,7 @@ local function cursor_anchor()
     return require("differ.pr.threads").anchor_at(session, buf, row)
 end
 
--- gc: collapse/expand the thread group under the cursor (§6.4). an explicit toggle
+-- gc: collapse/expand the thread group under the cursor. an explicit toggle
 -- overrides the cursor-peek default until toggled back; re-apply swaps the boxes in
 -- place (stacked) or shows/hides the float (split), and a no-op off a thread row
 function M.toggle_thread()
@@ -353,9 +353,9 @@ end
 -- gr: toggle the resolved state of the thread under the cursor (a cursor-context keymap,
 -- not an ex-command). optimistic — flip + re-apply (highlight swap) immediately, then
 -- reconcile to the
--- server's returned state, rolling back + flagging on error (§11). one line can stack
+-- server's returned state, rolling back + flagging on error. one line can stack
 -- several threads, so it acts on the first open one (else the first, to unresolve);
--- the sidecar flushes its thread cache after the mutation (§7.5)
+-- the sidecar flushes its thread cache after the mutation
 function M.resolve()
     local anchor = cursor_anchor()
     if not anchor then
@@ -392,7 +392,7 @@ function M.resolve()
     end)
 end
 
--- shared conflict recovery (§7.5 / §11): a mutation hit a moved head. re-fetch the PR
+-- shared conflict recovery: a mutation hit a moved head. re-fetch the PR
 -- (fresh base/head sha), drop the blob memo + thread cache (both were pinned to the old
 -- shas), re-source the current file + overlay, and flag the staleness. it never
 -- auto-retries the mutation; the caller re-prompts the user against the refreshed head
@@ -510,7 +510,7 @@ local function adopt_pending_review(pr)
 end
 
 -- open the session tab for a fetched PR. the overview is the PR home, a panel-less
--- pre-review page (§8.2); the file panel + diff (the review proper) build into the same
+-- pre-review page; the file panel + diff (the review proper) build into the same
 -- tab only when the user enters the files. so the panel construction is deferred behind
 -- session.build_panel, called by the files landing and the overview's e/r
 ---@param pr { owner: string, repo: string, number: integer }
@@ -541,8 +541,8 @@ local function open_session(pr, detail, opts)
     session = {
         coords = { owner = pr.owner, repo = pr.repo },
         pr = pr,
-        -- head_sha is captured here; the mutations send it as expected_head (§7.5 TOCTOU).
-        -- body/author/state/draft/mergeable are carried so the overview (§8.2) renders
+        -- head_sha is captured here; the mutations send it as expected_head (TOCTOU).
+        -- body/author/state/draft/mergeable are carried so the overview renders
         -- without a refetch (the detail is already in hand)
         pr_meta = {
             base_sha = detail.base_sha,
@@ -560,11 +560,11 @@ local function open_session(pr, detail, opts)
         entries = entries, -- flat FileEntry[] (single section), shared by ref with the panel
         versions = {}, -- per-path blob memo; valid for the session (shas are pinned)
         prefetching = {}, -- paths with an in-flight predictive prefetch (dedupe guard)
-        threads = nil, -- PR-wide review threads (§6.4), fetched once by pr.threads.refresh
-        checks = nil, -- get_checks result, cached lazily by the overview (§8.2)
+        threads = nil, -- PR-wide review threads, fetched once by pr.threads.refresh
+        checks = nil, -- get_checks result, cached lazily by the overview
         thread_collapsed = {}, -- per thread_id collapse override (gc); nil = cursor-driven
         thread_active = nil, -- the anchor key (bufnr:row) the cursor expands (peek)
-        review_id = nil, -- the active pending-review node id (§8.2); nil = immediate mode
+        review_id = nil, -- the active pending-review node id; nil = immediate mode
         pending_focus = nil, -- one-shot { path, side, line } for resume position-restore
         session_tab = session_tab, -- the tab hosting both the overview page and the review
         overview_win = vim.api.nvim_get_current_win(), -- the page window (pre-panel)
@@ -572,7 +572,7 @@ local function open_session(pr, detail, opts)
         panel = nil, -- nil until the user enters the files (build_panel below)
     }
 
-    -- the pr-only viewed actions, bound on the pr surfaces only (§4.3, §8.2): toggle
+    -- the pr-only viewed actions, bound on the pr surfaces only: toggle
     -- on the panel, unviewed nav on both. the generic panel/diff don't own them, so
     -- they reach the buffer via the extra_keymaps seam, not the fixed action set
     local panel_km, diff_km = cfg.keymaps.panel, cfg.keymaps.diff
@@ -594,7 +594,7 @@ local function open_session(pr, detail, opts)
         },
     }
     -- the diff surface keeps focus in the diff window when stepping (keep_focus = true);
-    -- the thread actions (§6.4) also bind here, via the same extra_keymaps seam
+    -- the thread actions also bind here, via the same extra_keymaps seam
     session.diff_extra_keymaps = {
         {
             spec = diff_km.next_unviewed,
@@ -614,7 +614,7 @@ local function open_session(pr, detail, opts)
         { spec = diff_km.prev_thread, fn = M.prev_thread, desc = "previous review thread" },
         { spec = diff_km.toggle_thread, fn = M.toggle_thread, desc = "toggle thread" },
         { spec = diff_km.resolve_thread, fn = M.resolve, desc = "resolve thread" },
-        -- commenting (§8.2): ga single (normal) / range (visual), gp reply to a thread
+        -- commenting: ga single (normal) / range (visual), gp reply to a thread
         { spec = diff_km.comment, fn = M.comment, desc = "comment" },
         { spec = diff_km.comment, fn = M.comment_range, desc = "comment on selection", mode = "x" },
         { spec = diff_km.reply, fn = M.reply, desc = "reply to thread" },
@@ -713,7 +713,7 @@ function M.show(pr, opts)
 end
 
 -- present the list_prs picker. the one transient selector the PR flow still uses
--- (§8.2): a PR list is a genuine pick step with no obvious panel home. a pick lands on
+--: a PR list is a genuine pick step with no obvious panel home. a pick lands on
 -- whichever `land` the caller chose (a bare list lands on the overview, view on files)
 ---@param coords { owner: string, repo: string }
 ---@param prs table[]
@@ -757,7 +757,7 @@ end
 
 -- M.open(opts): the entry point. resolve coords, then either jump straight to a known
 -- PR number or list PRs and pick one. `land` selects the landing surface (default the
--- overview home, §8.2); `review` fires start_review after landing on the files
+-- overview home); `review` fires start_review after landing on the files
 ---@param opts { number?: integer, filter?: string, coords?: table, land?: string, review?: boolean }|nil
 function M.open(opts)
     opts = opts or {}
@@ -861,9 +861,9 @@ function M.end_session()
     close_session_tab(tab)
 end
 
--- ── PR lifecycle (§8.2) ────────────────────────────────────────────────────────────
+-- ── PR lifecycle ───────────────────────────────────────────────────────────────────
 
--- lifecycle verb -> the set_pr_state value the sidecar expects (§7.3). pure, so the
+-- lifecycle verb -> the set_pr_state value the sidecar expects. pure, so the
 -- mapping is unit-tested; an unknown verb returns nil
 ---@type table<string, string>
 local VERB_STATE = {
@@ -873,7 +873,7 @@ local VERB_STATE = {
     reopen = "open",
 }
 
--- merge and close mutate irreversibly, so they confirm first (§8.2); ready/draft/reopen
+-- merge and close mutate irreversibly, so they confirm first; ready/draft/reopen
 -- are reversible and act without a prompt
 ---@type table<string, true>
 local DESTRUCTIVE = { merge = true, close = true }
@@ -888,7 +888,7 @@ function M.state_for_verb(verb)
     return VERB_STATE[verb]
 end
 
--- normalise a merge-method arg to a valid method, defaulting to squash (§8.2)
+-- normalise a merge-method arg to a valid method, defaulting to squash
 ---@param arg string|nil
 ---@return string
 function M.merge_method(arg)
@@ -902,7 +902,7 @@ function M.is_destructive(verb)
     return DESTRUCTIVE[verb] == true
 end
 
--- a yes/no gate for destructive actions (§8.2). vim.fn.confirm blocks until answered;
+-- a yes/no gate for destructive actions. vim.fn.confirm blocks until answered;
 -- the default button is "No" so a stray <CR> never fires the action
 ---@param prompt string
 ---@param on_yes fun()
@@ -987,7 +987,7 @@ function M.set_state(verb)
     end
 end
 
--- :Differ pr checkout — local git on the session's head_ref (§7.3 client-side, no
+-- :Differ pr checkout — local git on the session's head_ref (client-side, no
 -- sidecar round-trip): fetch the ref + check it out via the local git plumbing
 function M.checkout()
     M.with_session(function(s)
@@ -1011,7 +1011,7 @@ function M.checkout()
     end)
 end
 
--- :Differ pr browser — open the PR's html url in the system browser (§7.3 client-side,
+-- :Differ pr browser — open the PR's html url in the system browser (client-side,
 -- the `url` field from get_pr; no sidecar round-trip)
 function M.browser()
     M.with_session(function(s)
@@ -1023,7 +1023,7 @@ function M.browser()
     end)
 end
 
--- :Differ pr url — yank the PR's html url to the system clipboard (§7.3 client-side)
+-- :Differ pr url — yank the PR's html url to the system clipboard (client-side)
 function M.url()
     M.with_session(function(s)
         local url = s.pr_meta.url
@@ -1035,14 +1035,14 @@ function M.url()
     end)
 end
 
--- :Differ pr checks — the read-only CI checks view (§8.2)
+-- :Differ pr checks — the read-only CI checks view
 function M.checks()
     M.with_session(function(s)
         require("differ.pr.checks").show(s)
     end)
 end
 
--- M.resume(arg): reattach a pending review (§8.2). a number (or owner/repo#number)
+-- M.resume(arg): reattach a pending review. a number (or owner/repo#number)
 -- opens that PR then reattaches + restores position; no arg reattaches the currently
 -- open PR's draft. with no arg and no session, there's nothing to target
 ---@param arg string|nil

@@ -1,6 +1,6 @@
 package protocol
 
-// the closed set of error codes (§7.1). nothing outside this set ever reaches
+// the closed set of error codes. nothing outside this set ever reaches
 // the client: the github layer maps I/O failures into these, handlers produce
 // only bad_request/conflict, and anything unmapped falls back to internal.
 const (

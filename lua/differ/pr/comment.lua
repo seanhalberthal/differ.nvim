@@ -1,4 +1,4 @@
--- commenting from a diff gesture (§6.4, §8.2): turn the cursor (single line) or a visual
+-- commenting from a diff gesture: turn the cursor (single line) or a visual
 -- selection (range) into a github anchor, author the body in the compose float, and post
 -- it. a comment joins the pending draft when session.review_id is set and posts
 -- immediately otherwise. replies attach to the thread under the cursor by its node id.
@@ -191,7 +191,7 @@ end
 
 -- open the compose float for `opts` (a gesture anchor, or a reply target). the title
 -- names the mode so a live post is never mistaken for a draft: draft when a review is
--- active, "posts immediately" otherwise (§8.2). opts.initial pre-fills the body (the
+-- active, "posts immediately" otherwise. opts.initial pre-fills the body (the
 -- conflict re-prompt), opts.stale flags the head moved
 ---@param session table
 ---@param opts { anchor?: table, in_reply_to?: string, initial?: string, stale?: boolean }
@@ -213,7 +213,7 @@ function M.compose(session, opts)
 end
 
 -- post the composed body: assemble the post_comment args (a reply by node id, else the
--- new-thread anchor), attach review_id when drafting and the session head for the §7.5
+-- new-thread anchor), attach review_id when drafting and the session head for the
 -- guard, then re-fetch threads on success so the new comment renders authoritatively.
 -- a conflict means the head moved: refresh + re-anchor + re-prompt, never a silent post
 ---@param session table

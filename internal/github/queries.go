@@ -32,7 +32,7 @@ query GetPR($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
 }`
 
 // getThreadsQuery fetches the PR's review threads (paginated) with their comments.
-// diffSide/startDiffSide carry the LEFT/RIGHT anchor (§6.2); the comment state
+// diffSide/startDiffSide carry the LEFT/RIGHT anchor; the comment state
 // distinguishes a submitted thread from an unsubmitted draft (is_pending). inner
 // comments are capped at 100 (threads rarely exceed that).
 const getThreadsQuery = `

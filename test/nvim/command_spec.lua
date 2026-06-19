@@ -161,7 +161,7 @@ describe("command panel position", function()
         end
         command.panel("top")
         git.panel = saved
-        -- open_first so a fresh panel always shows a diff (the session anchor, §8.1)
+        -- open_first so a fresh panel always shows a diff (the session anchor)
         assert.are.same({ position = "top", open_first = true }, got)
     end)
 

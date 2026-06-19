@@ -18,13 +18,13 @@ type postCommentParams struct {
 	StartLine int    `json:"start_line"`
 	InReplyTo string `json:"in_reply_to"`
 	ReviewID  string `json:"review_id"`
-	// the head sha the review was anchored against; gates the post on the §7.5 TOCTOU guard
+	// the head sha the review was anchored against; gates the post on the TOCTOU guard
 	ExpectedHead string `json:"expected_head"`
 }
 
 // postComment creates a review comment: a reply when in_reply_to is set, else a new
 // thread (a draft with review_id, immediate without). anchor validation runs here so
-// GitHub's opaque 422s never reach the user (§7.5).
+// GitHub's opaque 422s never reach the user.
 func (d Deps) postComment(ctx context.Context, params json.RawMessage) (any, error) {
 	var p postCommentParams
 	if err := decode(params, &p); err != nil {

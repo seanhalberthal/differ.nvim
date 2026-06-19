@@ -1,8 +1,8 @@
--- typed wrappers over the generic sidecar request (§7.3). each forwards cb(err,
+-- typed wrappers over the generic sidecar request. each forwards cb(err,
 -- result); no caching or retry here (that lives in Go). the `pr` shorthand is
 -- {owner, repo, number}, but the sidecar decodes those fields flat (the handlers
 -- embed them, not a nested `pr` object), so every method sends owner/repo/number at
--- the top level. result shapes are fixed by §7.3
+-- the top level. result shapes are fixed by
 
 local sidecar = require("differ.sidecar")
 
@@ -50,7 +50,7 @@ function M.get_file_versions(pr, path, refs, cb)
 end
 
 -- set_file_viewed result: {viewed_state} (VIEWED|DISMISSED|UNVIEWED). flips the
--- github "Viewed" checkbox for `path` on the PR (§8.2)
+-- github "Viewed" checkbox for `path` on the PR
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param path string
 ---@param viewed boolean
@@ -75,7 +75,7 @@ end
 
 -- resolve_thread result: {resolved}. `thread_id` is the graphql node id from
 -- get_threads; the pr coords are still sent (the sidecar validates them and keys its
--- thread-cache invalidation on them, §7.5)
+-- thread-cache invalidation on them)
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param thread_id string
 ---@param resolved boolean
@@ -92,7 +92,7 @@ end
 
 -- get_timeline result: {comments:[{author, body, created_at}], reviews:[{author,
 -- state, body, created_at}]}. PR-level conversation comments + submitted review
--- verdicts (§3 keeps reactions/labels/events out); the overview builder merges + sorts
+-- verdicts (keeps reactions/labels/events out); the overview builder merges + sorts
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param cb fun(err: table|nil, result: any)
 function M.get_timeline(pr, cb)
@@ -113,7 +113,7 @@ local function with_pr(pr, args)
 end
 
 -- start_review result: {review_id}. idempotent: replaying it reattaches to the viewer's
--- existing pending draft rather than orphaning a second one (§7.3)
+-- existing pending draft rather than orphaning a second one
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param cb fun(err: table|nil, result: any)
 function M.start_review(pr, cb)
@@ -130,7 +130,7 @@ end
 
 -- get_pending_review result: {review_id, comments?:[{id, path, side, line, start_*?,
 -- body}]}. review_id is null when the viewer has no draft; the comments drive resume's
--- position restore (§8.2)
+-- position restore
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param cb fun(err: table|nil, result: any)
 function M.get_pending_review(pr, cb)
@@ -138,9 +138,9 @@ function M.get_pending_review(pr, cb)
 end
 
 -- post_comment result: {id, thread_id}. a reply when args.in_reply_to is set, else a
--- new thread (a draft when args.review_id is set, immediate when it isn't, §8.2). args:
+-- new thread (a draft when args.review_id is set, immediate when it isn't). args:
 -- path/side/line/body, start_side?/start_line? (range), in_reply_to?, review_id?,
--- expected_head? (the session head for the §7.5 TOCTOU guard)
+-- expected_head? (the session head for the TOCTOU guard)
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param args table
 ---@param cb fun(err: table|nil, result: any)
@@ -167,7 +167,7 @@ function M.delete_comment(pr, comment_id, cb)
 end
 
 -- get_checks result: {rollup, checks:[{name, status, conclusion, url, started_at?}]}.
--- the status-check rollup plus each normalised check; read-only (§7.3)
+-- the status-check rollup plus each normalised check; read-only
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param cb fun(err: table|nil, result: any)
 function M.get_checks(pr, cb)
@@ -176,7 +176,7 @@ end
 
 -- merge_pr result: {merged, sha?}. args: method (squash|merge|rebase), delete_branch?,
 -- subject?, body?. the sidecar pre-checks mergeability and returns a `conflict` error
--- rather than firing a doomed merge (§7.5), so the caller surfaces "not mergeable"
+-- rather than firing a doomed merge, so the caller surfaces "not mergeable"
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param args table  -- { method, delete_branch?, subject?, body? }
 ---@param cb fun(err: table|nil, result: any)
@@ -185,7 +185,7 @@ function M.merge_pr(pr, args, cb)
 end
 
 -- set_pr_state result: {state}. transitions the lifecycle: state is ready|draft|closed|
--- open and the result echoes the PR's condition after the transition (§7.3)
+-- open and the result echoes the PR's condition after the transition
 ---@param pr { owner: string, repo: string, number: integer }
 ---@param state string  -- ready|draft|closed|open
 ---@param cb fun(err: table|nil, result: any)

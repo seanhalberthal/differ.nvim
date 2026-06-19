@@ -1,4 +1,4 @@
--- :Differ subcommand router. phase 1 wires the runtime view controls (§8.3);
+-- :Differ subcommand router. phase 1 wires the runtime view controls;
 -- diff/pr/log/mergetool subcommands arrive with their frontends (phases 2+)
 
 local View = require("differ.view")
@@ -52,7 +52,7 @@ end
 ---@type table<string, true>
 local PANEL_POSITIONS = { left = true, right = true, top = true, bottom = true }
 
--- :Differ panel [left|right|top|bottom|revspec], open the file panel (§8.6) over a
+-- :Differ panel [left|right|top|bottom|revspec], open the file panel over a
 -- change set and show the first file's diff (the diff window is the session anchor,
 -- so there's never a panel without one). on a live session it hides/shows the sidebar
 -- in place; `:Differ close` ends the session. a position word repositions a live panel,
@@ -82,13 +82,13 @@ end
 -- openers (list/view/review <n>) forward an optional number and establish/switch the
 -- session; every other verb ignores args and acts on the one active session via the verb's
 -- own pr.with_session gate. cursor-context gestures (resolve/reply/delete) are not here:
--- they're keymaps (gr/gp/gx, §6.4/§8.2), not ex-commands
+-- they're keymaps (gr/gp/gx), not ex-commands
 ---@type table<string, fun(arg: string|nil)>
 local PR_VERBS = {
     list = function(arg)
         pr().open({ filter = arg or "open" })
     end,
-    -- view enters the diff read-only on PR n, else the active session (§8.2)
+    -- view enters the diff read-only on PR n, else the active session
     view = function(arg)
         pr().view({ number = arg and tonumber(arg) or nil })
     end,
@@ -99,12 +99,12 @@ local PR_VERBS = {
     overview = function()
         pr().overview()
     end,
-    -- the read-only CI checks view (§8.2)
+    -- the read-only CI checks view
     checks = function()
         pr().checks()
     end,
-    -- lifecycle (§8.2): merge takes an optional method; ready/draft/close/reopen map to a
-    -- set_pr_state value; checkout/browser/url stay client-side (§7.3)
+    -- lifecycle: merge takes an optional method; ready/draft/close/reopen map to a
+    -- set_pr_state value; checkout/browser/url stay client-side
     merge = function(arg)
         pr().merge(arg)
     end,
@@ -131,7 +131,7 @@ local PR_VERBS = {
     end,
 }
 
--- the nested `review` group (§8.2): a number opens that PR + starts the draft; a keyword is
+-- the nested `review` group: a number opens that PR + starts the draft; a keyword is
 -- a draft action on the active session; empty / `start` starts (or resumes) the draft.
 -- number and keyword never collide, so there's no precedence to remember
 ---@param arg string|nil
@@ -151,7 +151,7 @@ function M.pr_review(arg)
     notify("unknown `pr review` action: " .. arg, vim.log.levels.WARN)
 end
 
--- :Differ pr [<n>|owner/repo#n|<verb> [arg]] (§8.2). bare / a number / owner/repo#number
+-- :Differ pr [<n>|owner/repo#n|<verb> [arg]]. bare / a number / owner/repo#number
 -- open the PR and land on the overview (the PR home); a recognised verb dispatches via
 -- PR_VERBS. session-context verbs act on the one active session (pr.with_session)
 ---@param verb string|nil
@@ -161,7 +161,7 @@ function M.pr(verb, arg)
     if verb == nil or verb == "" or tonumber(verb) then
         return P.open({ number = verb and tonumber(verb) or nil, land = "overview" })
     end
-    -- explicit override: owner/repo#number targets a specific repo (forks, §1)
+    -- explicit override: owner/repo#number targets a specific repo (forks)
     local owner, repo, num = verb:match("^([^/]+)/([^#]+)#(%d+)$")
     if owner then
         return P.open({
@@ -192,7 +192,7 @@ function M.close()
     require("differ.git").close()
 end
 
--- :Differ mergetool [path|diff3_mixed]: 3-way conflict resolution (§8.5). no arg targets
+-- :Differ mergetool [path|diff3_mixed]: 3-way conflict resolution. no arg targets
 -- the current file (else the sole conflicted file, else a picker); `diff3_mixed` shows the
 -- base column too. read-only navigation for now; resolution + write land in slice 3
 ---@param arg string|nil
@@ -203,7 +203,7 @@ function M.mergetool(arg)
     require("differ.merge").open({ path = (arg ~= "" and arg) or nil })
 end
 
--- :Differ log [arg]: file history (§8.4). no arg or an arg naming a readable file →
+-- :Differ log [arg]: file history. no arg or an arg naming a readable file →
 -- single-file history (that file, else the current buffer); `base` is the trunk
 -- shortcut → branch-range history of `<base>...HEAD`; any other arg is a rev-range
 ---@param arg string|nil
@@ -226,7 +226,7 @@ function M.gofile()
     require("differ").jump_to_file()
 end
 
--- :Differ edit: edit-in-review (§8.1) — open the real worktree file in a transient
+-- :Differ edit: edit-in-review — open the real worktree file in a transient
 -- editable window at the cursor's mapped line, keeping the diff session live
 function M.edit()
     require("differ").edit_file()
@@ -251,7 +251,7 @@ function M.sidecar(arg)
     end)
 end
 
--- :Differ cache clear: flush the sidecar's in-process caches (§7.5)
+-- :Differ cache clear: flush the sidecar's in-process caches
 ---@param arg string|nil
 function M.cache(arg)
     if arg ~= "clear" then
@@ -292,10 +292,10 @@ end
 
 -- route `:Differ ...`. a recognised subcommand (layout/context/panel) takes its
 -- arg; `base` is the trunk shortcut → the whole branch vs base (`<base>...`, incl.
--- uncommitted); anything else, including no args, is a local-diff rev spec (§8.1),
+-- uncommitted); anything else, including no args, is a local-diff rev spec,
 -- so `:Differ`, `:Differ main...`, `:Differ a..b` open the file panel over that
 -- change set and show the first file's diff (DiffviewOpen-style). the exception: bare
--- `:Differ` mid-conflict opens the merge tool instead (§8.5)
+-- `:Differ` mid-conflict opens the merge tool instead
 ---@param fargs string[]
 function M.dispatch(fargs)
     local handler = fargs[1] and SUB[fargs[1]]
@@ -313,7 +313,7 @@ function M.dispatch(fargs)
             supersede = true,
         })
     end
-    -- bare `:Differ` during a conflicted merge routes to the merge tool (§8.5) — that's
+    -- bare `:Differ` during a conflicted merge routes to the merge tool — that's
     -- the "help me resolve this" moment. only the no-arg form reroutes; `:Differ <rev>`
     -- still opens that diff. the merge tool picks the target (current/sole/picker)
     if not fargs[1] and has_conflicts() then
@@ -329,7 +329,7 @@ local VALUES = {
     layout = { "stacked", "split" },
     context = { "full", "+", "-" },
     panel = { "left", "right", "top", "bottom" },
-    -- first-level pr verbs (§8.2). cursor-context gestures (resolve/reply/delete) are
+    -- first-level pr verbs. cursor-context gestures (resolve/reply/delete) are
     -- keymaps, not ex-commands; the review-draft actions nest under `review` (PR_SUB)
     pr = {
         "list",
@@ -352,7 +352,7 @@ local VALUES = {
     mergetool = { "diff3_mixed" },
 }
 
--- second-level completion under `pr <group>` (§8.2): the review-draft actions, and the
+-- second-level completion under `pr <group>`: the review-draft actions, and the
 -- merge method as a freebie of the same table. a numeric `pr review <n>` simply matches
 -- nothing here, which is correct
 ---@type table<string, string[]>

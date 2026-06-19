@@ -8,7 +8,7 @@ import (
 	"github.com/seanhalberthal/differ.nvim/internal/protocol"
 )
 
-// ResolveToken finds a GitHub token without go-gh (§7.5): GH_TOKEN, then
+// ResolveToken finds a GitHub token without go-gh: GH_TOKEN, then
 // GITHUB_TOKEN, then `gh auth token`. a missing gh binary with no env token is
 // gh_missing; gh present but yielding no token is auth. the token is never logged.
 func ResolveToken() (string, error) {

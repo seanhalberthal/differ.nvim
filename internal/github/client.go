@@ -1,6 +1,6 @@
 // Package github is the sidecar's I/O boundary: the only package that talks to
 // GitHub. it takes an injected *http.Client so tests swap a fake RoundTripper and
-// never hit the network (§10). all failures are mapped to the closed protocol code
+// never hit the network. all failures are mapped to the closed protocol code
 // set (errors.go); the token never leaves this package.
 package github
 

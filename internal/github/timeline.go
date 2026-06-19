@@ -6,7 +6,7 @@ import "context"
 // review verdicts. the viewer's PENDING draft is dropped (submittedAt empty) — it's a
 // work-in-progress, not a timeline entry. reviews with no body and no verdict state
 // are dropped too (a bare COMMENTED review that only carried inline thread comments is
-// noise here; those comments render in the diff overlay, §6.4).
+// noise here; those comments render in the diff overlay).
 func (c *Client) GetTimeline(ctx context.Context, owner, repo string, number int) (*Timeline, error) {
 	out := &Timeline{Comments: []TimelineComment{}, Reviews: []ReviewSummary{}}
 	cursor := ""

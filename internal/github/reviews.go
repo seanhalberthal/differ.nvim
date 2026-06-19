@@ -27,7 +27,7 @@ func (c *Client) prAndPendingReview(ctx context.Context, owner, repo string, num
 }
 
 // StartReview creates a pending review on the PR, or returns the viewer's existing
-// one. it is idempotent (§7.5): resume reattaches to the live draft instead of
+// one. it is idempotent: resume reattaches to the live draft instead of
 // orphaning a second one.
 func (c *Client) StartReview(ctx context.Context, owner, repo string, number int) (*StartReview, error) {
 	prID, pendingID, err := c.prAndPendingReview(ctx, owner, repo, number)

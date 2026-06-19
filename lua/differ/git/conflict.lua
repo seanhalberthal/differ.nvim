@@ -1,4 +1,4 @@
--- pure parser for git conflict markers in a working-tree file (§8.5). no nvim API,
+-- pure parser for git conflict markers in a working-tree file. no nvim API,
 -- so it runs under test/unit. recognises the default `merge` style (ours/theirs only)
 -- and `diff3`/`zdiff3` (a base slab between ||||||| and =======). marker lines are
 -- matched on their leading 7-char run, the ref label after them ignored

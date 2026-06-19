@@ -1,4 +1,4 @@
--- the merge-tool session (§8.5): lay the 3-way render into windows — ours / theirs on
+-- the merge-tool session: lay the 3-way render into windows — ours / theirs on
 -- top (plus base under the diff3_mixed layout), the result spine full-width below — drive
 -- conflict navigation (]x/[x), and resolve per conflict (take ours/theirs/both/base/none),
 -- splicing the chosen slab into the result and stripping the markers. the result column is
@@ -127,7 +127,7 @@ local function make_buffer(side, path, lines)
     return buf
 end
 
--- paint a full-line background over an inclusive 1-based range (extmark-only, §invariant 2).
+-- paint a full-line background over an inclusive 1-based range (extmark-only, invariant 2).
 -- clamps to the buffer: a hand-edit can leave a cached region pointing past the new EOF for
 -- the moment between the edit and the re-parse, and an out-of-range extmark would throw
 ---@param buf integer
@@ -377,7 +377,7 @@ local function region_at(regions, lnum)
 end
 
 -- resolve the conflict under the cursor by splicing in the chosen slab, then re-derive +
--- repaint, flash the produced lines, and advance to the next remaining conflict (§8.5)
+-- repaint, flash the produced lines, and advance to the next remaining conflict
 ---@param choice "ours"|"theirs"|"both"|"base"|"none"
 local function resolve_choice(choice)
     if not session then
@@ -612,7 +612,7 @@ local function lay_out(root, relpath, model, layout)
     paint_result(nil)
 
     -- nav + take-this resolution live on the result buffer (the working surface), from
-    -- the configurable merge keymaps (§4.3); falls back to the flat defaults when setup
+    -- the configurable merge keymaps; falls back to the flat defaults when setup
     -- wasn't called, like the diff view does
     local cfg = require("differ").get_config()
     local km = cfg.keymaps.merge or require("differ.config").defaults.keymaps

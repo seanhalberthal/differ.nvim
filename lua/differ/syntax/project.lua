@@ -1,6 +1,6 @@
 -- syntax projection: map source-coordinate treesitter captures onto derived-buffer
 -- rows through a line map's from-index. pure lua, no nvim API; this is the
--- §6.5 "captures + map -> extmark list" step, the unit-testable core of the pass.
+-- "captures + map -> extmark list" step, the unit-testable core of the pass.
 -- columns are byte-identical to the source line, so byte cols pass through
 -- unchanged; only the row is remapped. captures on a source line not present in
 -- this column (meta/filler/no-partner) have no buffer row and are dropped

@@ -1,7 +1,7 @@
--- owner/repo + PR-number resolution for the PR frontend (§6, §1). parse_remote is
+-- owner/repo + PR-number resolution for the PR frontend. parse_remote is
 -- pure (no vim calls) so it's unit-tested against the url-form table like git/rev.lua;
 -- resolve does the git-remote I/O. stays on git-remote parsing, not `gh repo view`,
--- so a token-only setup with no gh binary still resolves coords (§7.5 auth is
+-- so a token-only setup with no gh binary still resolves coords (auth is
 -- token-first)
 
 local M = {}
@@ -75,7 +75,7 @@ local function remote_url(name, root)
 end
 
 -- resolve the repo coords for the cwd's repo and call cb(err, {owner, repo}).
--- precedence (§1): an explicit `opts.coords` override; then `upstream` over `origin`
+-- precedence: an explicit `opts.coords` override; then `upstream` over `origin`
 -- (an upstream remote is itself the fork signal, so this gives fork support with no
 -- gh/API call); then `origin`; then the first github remote. a non-github remote is
 -- a clear, once-surfaced error

@@ -13,7 +13,7 @@ type listPRsParams struct {
 	Filter string `json:"filter"`
 }
 
-// listPRs returns the PR picker list (§7.3).
+// listPRs returns the PR picker list.
 func (d Deps) listPRs(ctx context.Context, params json.RawMessage) (any, error) {
 	var p listPRsParams
 	if err := decode(params, &p); err != nil {
@@ -32,7 +32,7 @@ type prParams struct {
 	Number int    `json:"number"`
 }
 
-// getPR returns full PR detail incl. per-file viewed state and rename info (§7.3).
+// getPR returns full PR detail incl. per-file viewed state and rename info.
 func (d Deps) getPR(ctx context.Context, params json.RawMessage) (any, error) {
 	var p prParams
 	if err := decode(params, &p); err != nil {

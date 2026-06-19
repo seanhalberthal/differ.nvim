@@ -1,4 +1,4 @@
-// Package protocol is the frozen wire contract (§7): newline-delimited JSON over stdio.
+// Package protocol is the frozen wire contract: newline-delimited JSON over stdio.
 // it imports nothing internal so the contract stays a leaf and cannot drift.
 package protocol
 

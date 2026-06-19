@@ -1,5 +1,5 @@
 -- runs under headless nvim: drives the View over real lua source and asserts the
--- treesitter syntax pass (§6.5) projects captures onto the derived buffer through
+-- treesitter syntax pass projects captures onto the derived buffer through
 -- the line map, in its own namespace, layered under the diff highlights
 local diff = require("differ.model.diff")
 local View = require("differ.view")

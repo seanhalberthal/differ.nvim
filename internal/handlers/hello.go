@@ -18,7 +18,7 @@ type helloResult struct {
 	Binary   string `json:"binary"`
 }
 
-// hello is the handshake (§7.2). a client protocol newer than ours is a hard
+// hello is the handshake. a client protocol newer than ours is a hard
 // mismatch surfaced as bad_request so the client tells the user to rebuild; an
 // older or unset client protocol still gets our versions back.
 func (d Deps) hello(_ context.Context, params json.RawMessage) (any, error) {

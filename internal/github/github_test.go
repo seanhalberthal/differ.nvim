@@ -12,7 +12,7 @@ import (
 )
 
 // rtFunc is a fake http.RoundTripper: every request is answered by f, so tests
-// never touch the network (§10).
+// never touch the network.
 type rtFunc func(*http.Request) (*http.Response, error)
 
 func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

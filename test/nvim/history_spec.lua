@@ -1,5 +1,5 @@
 -- runs under headless nvim against a throwaway git repo: exercises single-file
--- history (§8.4) end-to-end: the log walk, the history panel driving one View per
+-- history end-to-end: the log walk, the history panel driving one View per
 -- commit (commit vs its parent), commit stepping, the root-commit add edge, and
 -- session teardown
 local git_src = require("differ.git")

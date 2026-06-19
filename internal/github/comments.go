@@ -9,7 +9,7 @@ import (
 // PostComment creates a review comment. InReplyTo (a thread node id) replies into an
 // existing thread; with ReviewID set a new thread joins the pending draft (GraphQL);
 // otherwise the comment publishes immediately (REST). anchor shape (side, line
-// ordering) is validated by the handler before this runs (§7.5).
+// ordering) is validated by the handler before this runs.
 func (c *Client) PostComment(ctx context.Context, owner, repo string, number int, in PostCommentInput) (*PostComment, error) {
 	var (
 		res *PostComment

@@ -12,7 +12,7 @@ type cacheClearer interface {
 	ClearCache()
 }
 
-// cacheClear flushes the sidecar's caches (§7.5), surfaced as :Differ cache clear.
+// cacheClear flushes the sidecar's caches, surfaced as :Differ cache clear.
 // it is a no-op when the backend has no cache (e.g. a test double).
 func (d Deps) cacheClear(_ context.Context, _ json.RawMessage) (any, error) {
 	if cc, ok := d.GH.(cacheClearer); ok {
