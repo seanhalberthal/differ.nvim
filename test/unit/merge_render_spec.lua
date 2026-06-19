@@ -66,6 +66,50 @@ describe("render.merge (diff3_mixed layout)", function()
     end)
 end)
 
+describe("render.merge (fold ranges)", function()
+    -- a 34-line result with one conflict block at 15..19, latent unchanged spans either side
+    local function big()
+        local result = {}
+        for i = 1, 14 do
+            result[#result + 1] = "line" .. i
+        end
+        for _, m in ipairs({ "<<<<<<< HEAD", "OURS", "=======", "THEIRS", ">>>>>>> feature" }) do
+            result[#result + 1] = m
+        end
+        for i = 15, 30 do
+            result[#result + 1] = "line" .. i
+        end
+        return {
+            ours_text = "x\n",
+            theirs_text = "x\n",
+            result_text = table.concat(result, "\n") .. "\n",
+            regions = {
+                {
+                    index = 1,
+                    result_start = 15,
+                    result_end = 19,
+                    ours = { "OURS" },
+                    theirs = { "THEIRS" },
+                },
+            },
+        }
+    end
+
+    it("folds the unchanged spans either side of the block (lead/tail context kept)", function()
+        local r = merge.render(big(), {})
+        -- 35 lines, block 15..19: lead {1..11} (no top trim), tail {23..35} (3-line lead trim)
+        assert.are.same(
+            { { first = 1, last = 11 }, { first = 23, last = 35 } },
+            by_side(r, "result").folds
+        )
+    end)
+
+    it("emits no folds when the conflict leaves no room for one", function()
+        local r = merge.render(model(), {}) -- 7-line result, block 2..6
+        assert.are.same({}, by_side(r, "result").folds)
+    end)
+end)
+
 describe("render.merge (slab location edges)", function()
     it("maps ordered duplicate slabs to ordered positions", function()
         local m = {

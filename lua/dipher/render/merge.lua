@@ -19,12 +19,39 @@ local to_lines = require("dipher.util.text").to_lines
 ---@field side "ours"|"base"|"theirs"|"result"
 ---@field lines string[]
 ---@field regions dipher.merge.ColumnRegion[]
+---@field folds dipher.FoldRange[]  -- unchanged spans outside the slabs, foldable on demand
 
 ---@class dipher.merge.RenderResult
 ---@field columns dipher.merge.RenderColumn[]
 ---@field result_index integer -- index into columns of the editable result spine
 
 local M = {}
+
+-- lead/tail context kept unfolded around each slab/block (file boundaries aren't padded)
+local FOLD_CONTEXT = 3
+
+-- the unchanged spans of a column = the gaps outside its located slabs, trimmed by a
+-- lead/tail context (no trim against the file's top/bottom boundary). reuses the diff
+-- renderer's inclusive {first,last} FoldRange so the session folds them the same way. pure
+---@param total integer  -- the column's line count
+---@param regions dipher.merge.ColumnRegion[]  -- ordered, non-overlapping
+---@return dipher.FoldRange[]
+local function fold_ranges(total, regions)
+    local folds, pos = {}, 1 -- pos: first line not yet covered by a slab
+    for i, r in ipairs(regions) do
+        local first = pos + (i == 1 and 0 or FOLD_CONTEXT) -- no lead trim at the file top
+        local last = r.first - 1 - FOLD_CONTEXT
+        if last >= first then
+            folds[#folds + 1] = { first = first, last = last }
+        end
+        pos = r.last + 1
+    end
+    local first = pos + (#regions == 0 and 0 or FOLD_CONTEXT)
+    if total >= first then -- trailing span to EOF, no tail trim at the file bottom
+        folds[#folds + 1] = { first = first, last = total }
+    end
+    return folds
+end
 
 -- first 1-based start at or after `from` where `slab` matches `lines` run-for-run, or nil
 ---@param lines string[]
@@ -81,18 +108,31 @@ function M.render(model, opts)
     local theirs = to_lines(model.theirs_text)
     local result = to_lines(model.result_text)
 
+    local ours_regions = locate_regions(ours, model.regions, "ours")
     local columns = {
-        { side = "ours", lines = ours, regions = locate_regions(ours, model.regions, "ours") },
+        {
+            side = "ours",
+            lines = ours,
+            regions = ours_regions,
+            folds = fold_ranges(#ours, ours_regions),
+        },
     }
     if show_base then
         local base = to_lines(model.base_text)
-        columns[#columns + 1] =
-            { side = "base", lines = base, regions = locate_regions(base, model.regions, "base") }
+        local base_regions = locate_regions(base, model.regions, "base")
+        columns[#columns + 1] = {
+            side = "base",
+            lines = base,
+            regions = base_regions,
+            folds = fold_ranges(#base, base_regions),
+        }
     end
+    local theirs_regions = locate_regions(theirs, model.regions, "theirs")
     columns[#columns + 1] = {
         side = "theirs",
         lines = theirs,
-        regions = locate_regions(theirs, model.regions, "theirs"),
+        regions = theirs_regions,
+        folds = fold_ranges(#theirs, theirs_regions),
     }
 
     -- the result regions are exact: each marker block's line span (markers included)
@@ -101,7 +141,12 @@ function M.render(model, opts)
         result_regions[#result_regions + 1] =
             { index = r.index, first = r.result_start, last = r.result_end }
     end
-    columns[#columns + 1] = { side = "result", lines = result, regions = result_regions }
+    columns[#columns + 1] = {
+        side = "result",
+        lines = result,
+        regions = result_regions,
+        folds = fold_ranges(#result, result_regions),
+    }
 
     return { columns = columns, result_index = #columns }
 end
