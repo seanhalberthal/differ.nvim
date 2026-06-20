@@ -387,4 +387,21 @@ function M.complete(arglead, cmdline)
     end, pool)
 end
 
+-- register an ex-command routing to dispatch/complete. used for `:Differ` and any
+-- config-supplied aliases (`command_alias`); completion is name-agnostic since it
+-- keys off token position, not the command word
+---@param name string
+---@param desc string
+function M.register(name, desc)
+    vim.api.nvim_create_user_command(name, function(opts)
+        M.dispatch(opts.fargs)
+    end, {
+        nargs = "*",
+        desc = desc,
+        complete = function(arglead, cmdline)
+            return M.complete(arglead, cmdline)
+        end,
+    })
+end
+
 return M

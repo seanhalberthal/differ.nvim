@@ -100,6 +100,8 @@ These re-render the active view only. No refetch, no re-diff, and the state is l
 | `:Differ context full` | Show the whole file |
 | `:Differ context +` / `-` | Widen / narrow context by one |
 
+Set `command_alias` in `setup()` to register a shorter name for the same command, e.g. `command_alias = "D"` gives `:D HEAD~1`, `:D log`. Names must start with an uppercase letter (enforced by vim, not by me)
+
 ### Keymaps
 
 Buffer-local, active inside a differ diff:
@@ -160,6 +162,7 @@ require("differ").setup({
   },
   relative_dates = false,        -- "3 days ago" instead of YYYY-MM-DD wherever a date shows
   sidecar_bin = nil,             -- override the go sidecar path
+  command_alias = nil,           -- extra :command(s) routing to :Differ, e.g. "D" or { "D", "Df" }
 })
 ```
 

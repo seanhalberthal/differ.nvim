@@ -7,11 +7,36 @@ local M = {}
 ---@type differ.Config|nil
 M.config = nil
 
+-- register each `command_alias` as an ex-command routing to the `:Differ` dispatcher.
+-- a bad name (e.g. not starting uppercase) warns rather than aborting setup()
+---@param alias string|string[]|nil
+local function register_aliases(alias)
+    if not alias then
+        return
+    end
+    local names = type(alias) == "table" and alias or { alias }
+    for _, name in ipairs(names) do
+        local ok, err = pcall(
+            require("differ.command").register,
+            name,
+            "differ diff viewer (alias for :Differ)"
+        )
+        if not ok then
+            local msg = "differ: could not register command alias "
+                .. vim.inspect(name)
+                .. ": "
+                .. tostring(err)
+            vim.notify(msg, vim.log.levels.WARN)
+        end
+    end
+end
+
 -- resolve options and register highlight groups; call once from user config
 ---@param opts table|nil
 function M.setup(opts)
     M.config = config.resolve(opts)
     require("differ.ui.highlights").setup()
+    register_aliases(M.config.command_alias)
 end
 
 -- return the resolved config, defaulting if setup() was never called
