@@ -234,7 +234,7 @@ end
 function start()
     local bin = resolve_bin()
     if not bin then
-        return false, "sidecar binary not found (set sidecar_bin or build bin/differ-sidecar)"
+        return false, "sidecar binary not found (run `make go-build`, or set sidecar_bin)"
     end
     client.stdout_buf = ""
     client.ready = false

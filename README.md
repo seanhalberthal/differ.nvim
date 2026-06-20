@@ -29,7 +29,7 @@ the github side runs in a separate process rather than the editor, so opening a 
 
 everything through the merge tool is built and usable: both layouts, the file picker and panel, hunk staging, file history, the full pr-review flow (inline threads, drafts, viewed-state, checks, lifecycle actions), and 3-way conflict resolution.
 
-a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, server-pushed refresh) is on the roadmap, TBD. and it hasn't had broad real-world testing yet, so there may be some rough edges.
+a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, server-pushed refresh) is on the roadmap, TBD. and it hasn't had broad testing yet, so there may be some rough edges.
 
 ---
 
@@ -52,7 +52,7 @@ a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, se
 - Neovim 0.10+ (uses `vim.system`, `vim.fs.relpath`, `vim.diff`)
 - git on `PATH`
 - a treesitter parser for the languages you diff (optional, for the syntax pass)
-- for pr review: the go sidecar (built from this repo) and `gh` authenticated. not needed for local diffs.
+- for pr review: go + make on `PATH` (the sidecar is built on install via the `build` hook) and `gh` authenticated. not needed for local diffs.
 
 ---
 
@@ -63,13 +63,16 @@ a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, se
 ```lua
 {
   "seanhalberthal/differ.nvim",
+  build = "make go-build",
   config = function()
     require("differ").setup()
   end,
 }
 ```
 
-`setup()` is only needed to change defaults and register highlight groups eagerly. The `:Differ` command is registered on startup either way.
+`setup()` is only needed to change defaults and register highlight groups eagerly. the `:Differ` command is registered on startup either way.
+
+the `build` hook compiles the go sidecar (used by pr review) on install and update. it needs go and make on `PATH`; local diffs work without it, so you can drop the hook if you only want local diffing.
 
 ---
 

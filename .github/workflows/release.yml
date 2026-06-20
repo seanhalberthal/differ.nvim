@@ -1,0 +1,88 @@
+name: Release
+
+# version bump is driven by the first line of the head commit on main:
+#   breaking:        -> major (x.0.0)
+#   add: / update:   -> minor (0.x.0)
+#   feat: / fix:     -> patch (0.0.x)
+#   anything else    -> no release
+# or trigger manually from the Actions tab with an explicit version (e.g. v0.1.0).
+# the sidecar is built on install (lazy `build` hook), so releases ship no binaries,
+# just a tag + generated notes for changelog and lazy.nvim `version=` pinning.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Explicit tag to release (e.g. v0.1.0). Leave blank to bump from the latest commit prefix."
+        required: false
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        env:
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -n "$DISPATCH_VERSION" ]; then
+            NEW_TAG="$DISPATCH_VERSION"
+            echo "Manual release: $NEW_TAG"
+          else
+            MSG=$(printf '%s' "$HEAD_MSG" | head -1)
+            if printf '%s' "$MSG" | grep -qiE '^breaking:'; then
+              BUMP=major
+            elif printf '%s' "$MSG" | grep -qiE '^(add|update):'; then
+              BUMP=minor
+            elif printf '%s' "$MSG" | grep -qiE '^(feat|fix):'; then
+              BUMP=patch
+            else
+              echo "No release-triggering prefix on: $MSG"
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            LATEST=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+            V=${LATEST#v}
+            MAJOR=${V%%.*}; REST=${V#*.}; MINOR=${REST%%.*}; PATCH=${REST#*.}
+            case "$BUMP" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              patch) PATCH=$((PATCH + 1)) ;;
+            esac
+            NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+            echo "Bump $BUMP: $LATEST -> $NEW_TAG"
+          fi
+
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "::error::tag $NEW_TAG already exists"
+            exit 1
+          fi
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and release
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+          git push origin "$NEW_TAG"
+          gh release create "$NEW_TAG" --title "$NEW_TAG" --generate-notes

@@ -5,4 +5,6 @@ package protocol
 const Version = 1
 
 // Binary is the sidecar build version reported in the hello handshake.
-const Binary = "0.1.0"
+// stamped at release via -ldflags "-X .../internal/protocol.Binary=<version>";
+// unstamped local builds report "dev".
+var Binary = "dev"

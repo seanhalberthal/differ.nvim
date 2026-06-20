@@ -1,0 +1,28 @@
+name: PR Title Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+    branches: [main]
+
+concurrency:
+  group: pr-title-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title prefix
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if printf '%s' "$TITLE" | grep -qiE '^(breaking|feat|add|update|fix|docs|chore|refactor|test)(\(.+\))?:'; then
+            echo "Title OK: $TITLE"
+          else
+            echo "::error::PR title must start with a recognised prefix (breaking:, feat:, add:, update:, fix:, docs:, chore:, refactor:, test:)."
+            exit 1
+          fi
