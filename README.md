@@ -58,7 +58,7 @@ a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, se
 
 ## Installation
 
-[lazy.nvim](https://github.com/folke/lazy.nvim):
+### [lazy.nvim](https://github.com/folke/lazy.nvim)
 
 ```lua
 {
@@ -73,6 +73,29 @@ a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, se
 `setup()` is only needed to change defaults and register highlight groups eagerly. the `:Differ` command is registered on startup either way.
 
 the `build` hook compiles the go sidecar (used by pr review) on install and update. it needs go and make on `PATH`; local diffs work without it, so you can drop the hook if you only want local diffing.
+
+### vim.pack (Neovim 0.12+)
+
+vim.pack has no inline build key, so register a `PackChanged` hook (before `vim.pack.add`, so it also runs on first install):
+
+```lua
+vim.api.nvim_create_autocmd("PackChanged", {
+  callback = function(ev)
+    if ev.data.spec.name == "differ.nvim" and (ev.data.kind == "install" or ev.data.kind == "update") then
+      vim.system({ "make", "go-build" }, { cwd = ev.data.path }):wait()
+    end
+  end,
+})
+
+vim.pack.add({ "https://github.com/seanhalberthal/differ.nvim" })
+require("differ").setup()
+```
+
+pin a release with `{ src = "https://github.com/seanhalberthal/differ.nvim", version = "v0.1.0" }`.
+
+### other managers
+
+differ's only install step is building the go sidecar, so point your manager's build / post-update hook at `make go-build`: pckr `run`, vim-plug `do`, or the equivalent. it needs go and make; drop it for local diffs only.
 
 ---
 
