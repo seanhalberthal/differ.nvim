@@ -19,6 +19,7 @@
 ---@field relative_dates boolean
 ---@field base string|nil
 ---@field sidecar_bin string|nil
+---@field command_alias string|string[]|nil
 
 local M = {}
 
@@ -111,6 +112,10 @@ M.defaults = {
     -- nil auto-detects: origin/HEAD (the remote trunk), else local main/master
     base = nil,
     sidecar_bin = nil,
+    -- extra ex-command name(s) routing to the same dispatcher as `:Differ`, e.g.
+    -- "D" gives `:D HEAD~1`, `:D log`. nil registers none. names must start with an
+    -- uppercase letter (a vim user-command rule); registered by setup()
+    command_alias = nil,
 }
 
 -- resolve the keymaps config into per-surface action tables. the shared (top-level)
