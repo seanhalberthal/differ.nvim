@@ -2,48 +2,52 @@
 
 # differ.nvim
 
-**your whole diff and review loop in one neovim plugin: local diffs, file history, staging, pr review, and merge conflicts, all with the same UX.**
+**Your whole diff and review loop in one Neovim plugin: local diffs, file history, staging, PR review, and merge conflicts, all with the same UX.**
 
+[![CI](https://img.shields.io/github/actions/workflow/status/seanhalberthal/differ.nvim/ci.yml?branch=main&style=flat&logo=githubactions&logoColor=white&label=CI)](https://github.com/seanhalberthal/differ.nvim/actions)
+[![Release](https://img.shields.io/github/v/release/seanhalberthal/differ.nvim?style=flat&logo=github&logoColor=white&label=Release&color=6366F1)](https://github.com/seanhalberthal/differ.nvim/releases/latest)
+[![Licence](https://img.shields.io/github/license/seanhalberthal/differ.nvim?style=flat&label=licence&color=6366F1)](LICENCE)
 [![Lua](https://img.shields.io/badge/Lua-5.1-2C2D72?style=flat&logo=lua&logoColor=white)](https://www.lua.org)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Neovim](https://img.shields.io/badge/Neovim-0.10+-57A143?style=flat&logo=neovim&logoColor=white)](https://neovim.io)
 [![macOS](https://img.shields.io/badge/macOS-supported-6e7681?style=flat&logo=apple&logoColor=white)]()
 [![Linux](https://img.shields.io/badge/Linux-supported-6e7681?style=flat&logo=linux&logoColor=white)]()
-[![licence](https://img.shields.io/badge/licence-MIT-6366F1?style=flat&logoColor=white)](LICENCE)
 
 [Features](#features) · [Status](#status) · [Installation](#installation) · [Usage](#usage) · [Configuration](#configuration) · [Development](#development)
 
 </div>
 
----
-
-you can already get most of this from existing plugins, just not all of it in one tool with the same feel. that's what i wanted, so i built it.
-
-everything runs through one renderer, so staging a hunk and replying to a review comment behave like the same tool, because they are. the default view is a stacked dual-rail layout: one scroll surface with old and new lines interleaved per hunk and both line numbers in the gutter. side-by-side is a keystroke away from the same model. word-level highlighting and treesitter syntax are on by default.
-
-the github side runs in a separate process rather than the editor, so opening a pr or posting a review doesn't block on the api, and results are cached between calls.
+![differ demo](.demo/demo.gif)
 
 ---
 
-## Status
+You can already get most of this from existing plugins, just not all of it in one tool with the same feel. That's what I wanted, so I built it.
 
-everything through the merge tool is built and usable: both layouts, the file picker and panel, hunk staging, file history, the full pr-review flow (inline threads, drafts, viewed-state, checks, lifecycle actions), and 3-way conflict resolution.
+Everything runs through one renderer, so staging a hunk and replying to a review comment behave like the same tool, because they are. The default view is a stacked dual-rail layout: one scroll surface with old and new lines interleaved per hunk and both line numbers in the gutter. Side-by-side is a keystroke away from the same model. Word-level highlighting and Treesitter syntax are on by default.
 
-a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, server-pushed refresh) is on the roadmap, TBD. and it hasn't had broad testing yet, so there may be some rough edges.
+The GitHub side runs in a separate process rather than the editor, so opening a PR or posting a review doesn't block on the API, and results are cached between calls.
 
 ---
 
 ## Features
 
-- **stacked dual-rail layout.** one scroll surface with old and new lines interleaved per hunk, dual line-number gutter via `statuscolumn`.
-- **side-by-side layout** from the same hunk model. switch layout at runtime; it is a pure re-render.
-- **pr review in the diff.** inline comment threads, pending-review drafts, thread resolve, per-file viewed-state, ci checks, and lifecycle actions (merge, checkout, ready/draft, close), backed by a go sidecar that owns the github api.
-- **file panel and staging.** persistent sidebar with the changed-file tree, status icons, +/- counts, and hunk- and file-level staging.
-- **file history.** single-file and branch-range log, walked commit-by-commit, each step a diff through the same engine.
-- **3-way merge tool.** base/ours/theirs through the n-column renderer, resolved into the working-tree file.
-- **word-level highlighting** and **treesitter syntax** on by default, so the diff reads like source instead of a grey block.
-- **real buffer lines** for code. search, yank, and motions all work; the hunk model is canonical and the buffer is a projection of it.
-- **one diff engine** (`vim.diff()`, histogram) shared by every source.
+- **Stacked dual-rail layout** with one scroll surface, old and new lines interleaved per hunk, and a dual line-number gutter via `statuscolumn`
+- **Side-by-side layout** from the same hunk model, switchable at runtime as a pure re-render
+- **PR review in the diff** with inline comment threads, pending-review drafts, thread resolve, per-file viewed-state, CI checks, and lifecycle actions (merge, checkout, ready/draft, close), backed by a Go sidecar that owns the GitHub API
+- **File panel and staging** in a persistent sidebar with the changed-file tree, status icons, +/- counts, and hunk- and file-level staging
+- **File history** for single files and branch ranges, walked commit-by-commit, each step a diff through the same engine
+- **3-way merge tool** running base/ours/theirs through the n-column renderer, resolved into the working-tree file
+- **Word-level highlighting** and **Treesitter syntax** on by default, so the diff reads like source instead of a grey block
+- **Real buffer lines** for code, so search, yank, and motions all work; the hunk model is canonical and the buffer is a projection of it
+- **One diff engine** (`vim.diff()`, histogram) shared by every source
+
+---
+
+## Status
+
+Everything through the merge tool is built and usable: both layouts, the file picker and panel, hunk staging, file history, the full PR-review flow (inline threads, drafts, viewed-state, checks, lifecycle actions), and 3-way conflict resolution.
+
+A live layer on top of the sidecar (optimistic updates, prefetch, warm cache, server-pushed refresh) is on the roadmap, TBD. It hasn't had broad testing yet, so expect some rough edges.
 
 ---
 
@@ -51,8 +55,8 @@ a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, se
 
 - Neovim 0.10+ (uses `vim.system`, `vim.fs.relpath`, `vim.diff`)
 - git on `PATH`
-- a treesitter parser for the languages you diff (optional, for the syntax pass)
-- for pr review: go + make on `PATH` (the sidecar is built on install via the `build` hook) and `gh` authenticated. not needed for local diffs.
+- A Treesitter parser for the languages you diff (optional, for the syntax pass)
+- For PR review: Go + make on `PATH` (the sidecar is built on install via the `build` hook) and `gh` authenticated. Not needed for local diffs.
 
 ---
 
@@ -70,13 +74,13 @@ a live layer on top of the sidecar (optimistic updates, prefetch, warm cache, se
 }
 ```
 
-`setup()` is only needed to change defaults and register highlight groups eagerly. the `:Differ` command is registered on startup either way.
+`setup()` is only needed to change defaults and register highlight groups eagerly. The `:Differ` command is registered on startup either way.
 
-the `build` hook compiles the go sidecar (used by pr review) on install and update. it needs go and make on `PATH`; local diffs work without it, so you can drop the hook if you only want local diffing.
+The `build` hook compiles the Go sidecar (used by PR review) on install and update. It needs Go and make on `PATH`; local diffs work without it, so you can drop the hook if you only want local diffing.
 
 ### vim.pack (Neovim 0.12+)
 
-vim.pack has no inline build key, so register a `PackChanged` hook (before `vim.pack.add`, so it also runs on first install):
+`vim.pack` has no inline build key, so register a `PackChanged` hook (before `vim.pack.add`, so it also runs on first install):
 
 ```lua
 vim.api.nvim_create_autocmd("PackChanged", {
@@ -91,17 +95,17 @@ vim.pack.add({ "https://github.com/seanhalberthal/differ.nvim" })
 require("differ").setup()
 ```
 
-pin a release with `{ src = "https://github.com/seanhalberthal/differ.nvim", version = "v0.1.0" }`.
+Pin a release with `{ src = "https://github.com/seanhalberthal/differ.nvim", version = "v0.1.1" }`.
 
-### other managers
+### Other managers
 
-differ's only install step is building the go sidecar, so point your manager's build / post-update hook at `make go-build`: pckr `run`, vim-plug `do`, or the equivalent. it needs go and make; drop it for local diffs only.
+differ's only install step is building the Go sidecar, so point your manager's build / post-update hook at `make go-build`: pckr `run`, vim-plug `do`, or the equivalent. It needs Go and make; drop it for local diffs only.
 
 ---
 
 ## Usage
 
-`:Differ [revspec]` diffs the current file against a resolved source. the grammar mirrors git:
+`:Differ [revspec]` diffs the current file against a resolved source. The grammar mirrors git:
 
 | Command | Diffs |
 |---|---|
@@ -123,16 +127,116 @@ These re-render the active view only. No refetch, no re-diff, and the state is l
 | `:Differ context full` | Show the whole file |
 | `:Differ context +` / `-` | Widen / narrow context by one |
 
-Set `command_alias` in `setup()` to register a shorter name for the same command, e.g. `command_alias = "D"` gives `:D HEAD~1`, `:D log`. Names must start with an uppercase letter (enforced by vim, not by me)
+Set `command_alias` in `setup()` to register a shorter name for the same command, e.g. `command_alias = "D"` gives `:D HEAD~1`, `:D log`. Names must start with an uppercase letter (enforced by vim, not by me).
 
 ### Keymaps
 
-Buffer-local, active inside a differ diff:
+Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()`.
+
+**Diff** (the stacked / split view)
 
 | Key | Action |
 |---|---|
 | `]c` / `[c` | Next / previous hunk |
+| `]f` / `[f` | Next / previous file |
+| `f` / `b` | Scroll a quarter page down / up |
+| `s` / `u` | Stage / unstage the hunk |
+| `S` / `U` | Stage / unstage all |
 | `d=` / `d-` | More / less context |
+| `df` | Edit-in-review (uncommitted diffs) |
+| `de` | Open the real file and end the session |
+
+**Panel** (the file list)
+
+| Key | Action |
+|---|---|
+| `<CR>` / `o` | Open the file under the cursor |
+| `]c` / `[c` | Step the selection |
+| `i` | Toggle tree / name listing |
+| `c` / `C` / `O` | Collapse node / collapse all / expand all |
+| `s` / `u` / `S` / `U` | Stage / unstage file, or all |
+| `X` | Discard changes |
+| `R` | Refresh |
+| `g?` | Help |
+
+**History** (log / range mode)
+
+| Key | Action |
+|---|---|
+| `<CR>` / `o` | Open the commit / diff |
+| `za` | Toggle fold (range mode) |
+| `g?` | Help |
+
+**PR review** (on top of the diff + panel keys)
+
+| Key | Action |
+|---|---|
+| `<Tab>` | Toggle the GitHub "viewed" checkbox (panel) |
+| `]u` / `[u` | Next / previous unviewed file |
+| `]t` / `[t` | Next / previous review thread |
+| `ga` | Comment on the line / selection |
+| `gp` | Reply to the thread under the cursor |
+| `gx` | Delete the latest comment in the thread |
+| `gc` | Collapse / expand the thread |
+| `gr` | Resolve / unresolve the thread |
+
+**Merge tool** (the result buffer)
+
+| Key | Action |
+|---|---|
+| `]x` / `[x` | Next / previous conflict |
+| `<leader>co` / `ct` / `cb` | Take ours / theirs / base |
+| `<leader>ca` | Take both (ours then theirs) |
+| `dx` | Drop the conflict region |
+
+### Launchers (a starting point)
+
+differ ships no global launchers — only the in-view buffer maps above and the optional `command_alias`. These are the `<leader>` launchers I drive it with, as a lazy.nvim spec you can lift wholesale or trim to taste.
+
+```lua
+{
+  "seanhalberthal/differ.nvim",
+  build = "make go-build",
+  cmd = "Differ",
+  keys = {
+    -- local diff / history
+    { "<leader>do", "<cmd>Differ<CR>",                       desc = "Diff: open (HEAD vs worktree)" },
+    { "<leader>dc", "<cmd>Differ close<CR>",                 desc = "Diff: close" },
+    { "<leader>dt", "<cmd>Differ base<CR>",                  desc = "Diff: branch total (vs base)" },
+    { "<leader>de", "<cmd>Differ gofile<CR>",                desc = "Diff: open the real file" },
+    { "<leader>dh", "<cmd>Differ log<CR>",                   desc = "Diff: file history" },
+    { "<leader>dp", "<cmd>Differ log origin/HEAD...HEAD<CR>", desc = "Diff: PR range (local, no API)" },
+    { "<leader>dl", "<cmd>Differ layout<CR>",                desc = "Diff: toggle layout" },
+    -- pr review (sidecar + github)
+    { "<leader>pl", "<cmd>Differ pr list<CR>",               desc = "PR: list" },
+    {
+      "<leader>po",
+      function()
+        vim.ui.input({ prompt = "PR number: " }, function(input)
+          if input and input ~= "" then vim.cmd("Differ pr " .. input) end
+        end)
+      end,
+      desc = "PR: open by number",
+    },
+    { "<leader>pr",  "<cmd>Differ pr review<CR>",         desc = "PR: review start" },
+    { "<leader>pe",  "<cmd>Differ pr review resume<CR>",  desc = "PR: review resume" },
+    { "<leader>pm",  "<cmd>Differ pr review submit<CR>",  desc = "PR: review submit" },
+    { "<leader>pd",  "<cmd>Differ pr review discard<CR>", desc = "PR: review discard" },
+    { "<leader>psm", "<cmd>Differ pr merge squash<CR>",   desc = "PR: squash merge" },
+    { "<leader>pk",  "<cmd>Differ pr checks<CR>",         desc = "PR: checks" },
+    { "<leader>pO",  "<cmd>Differ pr checkout<CR>",       desc = "PR: checkout" },
+    { "<leader>pR",  "<cmd>Differ pr ready<CR>",          desc = "PR: mark ready" },
+    { "<leader>pD",  "<cmd>Differ pr draft<CR>",          desc = "PR: mark draft" },
+    { "<leader>pX",  "<cmd>Differ pr close<CR>",          desc = "PR: close" },
+    { "<leader>pb",  "<cmd>Differ pr browser<CR>",        desc = "PR: open in browser" },
+    { "<leader>py",  "<cmd>Differ pr url<CR>",            desc = "PR: yank URL" },
+    { "<leader>pq",  "<cmd>Differ close<CR>",             desc = "PR: quit" },
+  },
+  config = function()
+    require("differ").setup({ command_alias = "D" })
+  end,
+}
+```
 
 ### Lua API
 
@@ -170,20 +274,44 @@ require("differ").setup({
     collapsed = false,
   },
   keymaps = {                    -- one flat action -> lhs table, shared across the diff,
-    next_hunk = "]c",            -- panel and history surfaces (each binds what it has).
-    prev_hunk = "[c",            -- a value is a string, a list, or false to disable.
-    next_file = "]f",            -- override globally here, or scope to one surface via
-    prev_file = "[f",            -- a diff = {...} / panel = {...} / history = {...} subtable
-    scroll_down = "f",           -- f/b scroll the diff a quarter page (shadow native f/b)
+    -- a value is a string, a list of strings, or false to disable. override globally
+    -- here, or scope to one surface via a diff/panel/history/merge = {...} subtable
+    next_hunk = "]c",            -- diff, panel, history
+    prev_hunk = "[c",
+    next_file = "]f",            -- diff; panel/history step the selection
+    prev_file = "[f",
+    scroll_down = "f",           -- all three (shadows native f/b; set false to restore)
     scroll_up = "b",
-    select = { "<CR>", "o" },    -- panel + history
-    help = "g?",                 -- panel + history
-    stage = "s", unstage = "u", stage_all = "S", unstage_all = "U",  -- diff (hunk) + panel (file)
-    more_context = "d=", less_context = "d-",                        -- diff
-    discard = "X", refresh = "R",                                    -- panel
-    toggle_fold = "za",                                              -- history (range mode)
+    select = { "<CR>", "o" },    -- panel, history
+    help = "g?",                 -- panel, history
+    toggle_listing = "i",        -- panel: toggle tree / name
+    close_node = "c",            -- panel: collapse the dir under the cursor (or its parent)
+    close_all = "C",             -- panel: collapse every dir
+    open_all = "O",              -- panel: expand every dir
+    stage = "s", unstage = "u",  -- diff (hunk-level), panel (file-level)
+    stage_all = "S", unstage_all = "U",
+    more_context = "d=", less_context = "d-",  -- diff
+    edit_file = "df",            -- diff: edit-in-review, uncommitted (worktree/staged) diffs
+    goto_file = "de",            -- diff: open the real file and end the session
+    discard = "X", refresh = "R",  -- panel
+    toggle_fold = "za",          -- history (range mode)
+    -- pr review (pr diff + panel)
+    toggle_viewed = "<Tab>",     -- pr panel: flip the github viewed checkbox
+    next_unviewed = "]u", prev_unviewed = "[u",  -- pr panel + diff
+    next_thread = "]t", prev_thread = "[t",      -- pr diff
+    comment = "ga",              -- pr diff: comment on the line (normal) or selection (visual)
+    reply = "gp",                -- pr diff: reply to the thread under the cursor
+    delete_comment = "gx",       -- pr diff: delete the latest comment of the thread
+    toggle_thread = "gc",        -- pr diff: collapse/expand the thread under the cursor
+    resolve_thread = "gr",       -- pr diff: resolve/unresolve the thread under the cursor
+    -- merge tool, bound on the result buffer
+    next_conflict = "]x", prev_conflict = "[x",
+    choose_ours = "<leader>co", choose_theirs = "<leader>ct", choose_base = "<leader>cb",
+    choose_all = "<leader>ca",   -- take both (ours then theirs)
+    choose_none = "dx",          -- drop the conflict region
   },
   relative_dates = false,        -- "3 days ago" instead of YYYY-MM-DD wherever a date shows
+  base = nil,                    -- base branch for `base`/`log base`; nil auto-detects origin/HEAD
   sidecar_bin = nil,             -- override the go sidecar path
   command_alias = nil,           -- extra :command(s) routing to :Differ, e.g. "D" or { "D", "Df" }
 })
@@ -214,7 +342,7 @@ frontends            core (lua/differ)
 ```
 
 <details>
-<summary>Repository layout</summary>
+<summary><b>Repository layout</b></summary>
 
 ```
 lua/differ/

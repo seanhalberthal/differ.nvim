@@ -4,3 +4,7 @@
 .luarc.local.json
 docs/overview.md
 /.plans
+
+# generated demo fixtures (rebuilt by .demo/setup.sh); the gif/mp4 are committed
+/.demo/fixture/
+/.demo/fixture-merge/

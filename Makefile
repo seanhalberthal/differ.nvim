@@ -24,7 +24,8 @@ GO_LDFLAGS := -X github.com/seanhalberthal/differ.nvim/internal/protocol.Binary=
 .PHONY: help \
 	lua-test lua-test-unit lua-test-nvim lua-lint lua-fmt lua-fmt-check \
 	go-build go-test go-vet go-lint go-fmt go-fmt-check \
-	test lint fmt fmt-check check clean
+	test lint fmt fmt-check check clean \
+	demo demo-fixtures
 
 # ──────────────────────────────────────────────────────────────────────────────
 ##@ Lua
@@ -101,6 +102,19 @@ check: lint go-vet test ## Run the full quality gate
 clean: ## Remove build artefacts
 	@rm -rf bin differ-sidecar
 	@$(OK) "Cleaned"
+
+# ──────────────────────────────────────────────────────────────────────────────
+##@ Demo
+# ──────────────────────────────────────────────────────────────────────────────
+
+demo-fixtures: ## Build the throwaway git fixtures the demo records against
+	@$(INFO) "Building demo fixtures"
+	@bash .demo/setup.sh
+
+demo: demo-fixtures ## Re-record .demo/demo.gif and .demo/demo.mp4 (needs vhs + ffmpeg)
+	@$(INFO) "Recording demo (vhs)"
+	@vhs .demo/demo.tape
+	@$(OK) "Recorded .demo/demo.gif"
 
 # ──────────────────────────────────────────────────────────────────────────────
 ##@ Meta
