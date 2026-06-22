@@ -3,7 +3,7 @@ package github
 import (
 	"context"
 
-	"github.com/seanhalberthal/differ.nvim/internal/protocol"
+	"github.com/undont/differ.nvim/internal/protocol"
 )
 
 // SetPRState transitions a PR's lifecycle: ready (mark ready for review), draft

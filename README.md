@@ -4,9 +4,9 @@
 
 **Your whole diff and review loop in one Neovim plugin: local diffs, file history, staging, PR review, and merge conflicts, all with the same UX.**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/seanhalberthal/differ.nvim/ci.yml?branch=main&style=flat&logo=githubactions&logoColor=white&label=CI)](https://github.com/seanhalberthal/differ.nvim/actions)
-[![Release](https://img.shields.io/github/v/release/seanhalberthal/differ.nvim?style=flat&logo=github&logoColor=white&label=Release&color=6366F1)](https://github.com/seanhalberthal/differ.nvim/releases/latest)
-[![Licence](https://img.shields.io/github/license/seanhalberthal/differ.nvim?style=flat&label=licence&color=6366F1)](LICENCE)
+[![CI](https://img.shields.io/github/actions/workflow/status/undont/differ.nvim/ci.yml?branch=main&style=flat&logo=githubactions&logoColor=white&label=CI)](https://github.com/undont/differ.nvim/actions)
+[![Release](https://img.shields.io/github/v/release/undont/differ.nvim?style=flat&logo=github&logoColor=white&label=Release&color=6366F1)](https://github.com/undont/differ.nvim/releases/latest)
+[![Licence](https://img.shields.io/github/license/undont/differ.nvim?style=flat&label=licence&color=6366F1)](LICENCE)
 [![Lua](https://img.shields.io/badge/Lua-5.1-2C2D72?style=flat&logo=lua&logoColor=white)](https://www.lua.org)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Neovim](https://img.shields.io/badge/Neovim-0.10+-57A143?style=flat&logo=neovim&logoColor=white)](https://neovim.io)
@@ -66,7 +66,7 @@ A live layer on top of the sidecar (optimistic updates, prefetch, warm cache, se
 
 ```lua
 {
-  "seanhalberthal/differ.nvim",
+  "undont/differ.nvim",
   build = "make go-build",
   config = function()
     require("differ").setup()
@@ -91,11 +91,11 @@ vim.api.nvim_create_autocmd("PackChanged", {
   end,
 })
 
-vim.pack.add({ "https://github.com/seanhalberthal/differ.nvim" })
+vim.pack.add({ "https://github.com/undont/differ.nvim" })
 require("differ").setup()
 ```
 
-Pin a release with `{ src = "https://github.com/seanhalberthal/differ.nvim", version = "v0.1.1" }`.
+Pin a release with `{ src = "https://github.com/undont/differ.nvim", version = "v0.1.1" }`.
 
 ### Other managers
 
@@ -195,7 +195,7 @@ differ ships no global launchers — only the in-view buffer maps above and the 
 
 ```lua
 {
-  "seanhalberthal/differ.nvim",
+  "undont/differ.nvim",
   build = "make go-build",
   cmd = "Differ",
   keys = {

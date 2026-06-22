@@ -3,7 +3,7 @@ package github
 import (
 	"context"
 
-	"github.com/seanhalberthal/differ.nvim/internal/protocol"
+	"github.com/undont/differ.nvim/internal/protocol"
 )
 
 // PostComment creates a review comment. InReplyTo (a thread node id) replies into an

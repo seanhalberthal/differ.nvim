@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/seanhalberthal/differ.nvim/internal/protocol"
+	"github.com/undont/differ.nvim/internal/protocol"
 )
 
 // GetFileVersions returns the full base and head blobs for one path in a PR. the

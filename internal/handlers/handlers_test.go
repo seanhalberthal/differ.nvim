@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/seanhalberthal/differ.nvim/internal/github"
-	"github.com/seanhalberthal/differ.nvim/internal/protocol"
+	"github.com/undont/differ.nvim/internal/github"
+	"github.com/undont/differ.nvim/internal/protocol"
 )
 
 // mockAPI records what it was called with so handler routing/validation can be

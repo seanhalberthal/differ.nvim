@@ -10,10 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/seanhalberthal/differ.nvim/internal/github"
-	"github.com/seanhalberthal/differ.nvim/internal/handlers"
-	"github.com/seanhalberthal/differ.nvim/internal/logx"
-	"github.com/seanhalberthal/differ.nvim/internal/server"
+	"github.com/undont/differ.nvim/internal/github"
+	"github.com/undont/differ.nvim/internal/handlers"
+	"github.com/undont/differ.nvim/internal/logx"
+	"github.com/undont/differ.nvim/internal/server"
 )
 
 func main() {

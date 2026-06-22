@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"regexp"
 
-	"github.com/seanhalberthal/differ.nvim/internal/protocol"
+	"github.com/undont/differ.nvim/internal/protocol"
 )
 
 const maxResponse = 32 * 1024 * 1024 // bound a single response body

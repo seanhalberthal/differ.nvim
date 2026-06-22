@@ -3,8 +3,8 @@ local repo = require("differ.pr.repo")
 describe("pr.repo.parse_remote", function()
     it("parses an scp-style git@github.com remote", function()
         assert.are.same(
-            { owner = "seanhalberthal", repo = "differ.nvim" },
-            repo.parse_remote("git@github.com:seanhalberthal/differ.nvim.git")
+            { owner = "undont", repo = "differ.nvim" },
+            repo.parse_remote("git@github.com:undont/differ.nvim.git")
         )
     end)
 

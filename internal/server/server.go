@@ -12,8 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/seanhalberthal/differ.nvim/internal/handlers"
-	"github.com/seanhalberthal/differ.nvim/internal/protocol"
+	"github.com/undont/differ.nvim/internal/handlers"
+	"github.com/undont/differ.nvim/internal/protocol"
 )
 
 // maxLine bounds a single request frame (large get_file_versions blobs land on

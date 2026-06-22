@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/seanhalberthal/differ.nvim/internal/protocol"
+	"github.com/undont/differ.nvim/internal/protocol"
 )
 
 // rtFunc is a fake http.RoundTripper: every request is answered by f, so tests

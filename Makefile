@@ -19,7 +19,7 @@ GO_BIN  := bin/differ-sidecar
 # stamped into protocol.Binary so the hello handshake reports a real version,
 # not "dev"; falls back to "dev" outside a git checkout
 GO_VERSION := $(shell git describe --tags --always 2>/dev/null | sed 's/^v//' || echo dev)
-GO_LDFLAGS := -X github.com/seanhalberthal/differ.nvim/internal/protocol.Binary=$(GO_VERSION)
+GO_LDFLAGS := -X github.com/undont/differ.nvim/internal/protocol.Binary=$(GO_VERSION)
 
 .PHONY: help \
 	lua-test lua-test-unit lua-test-nvim lua-lint lua-fmt lua-fmt-check \

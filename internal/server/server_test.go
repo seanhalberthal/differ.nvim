@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/seanhalberthal/differ.nvim/internal/handlers"
-	"github.com/seanhalberthal/differ.nvim/internal/protocol"
+	"github.com/undont/differ.nvim/internal/handlers"
+	"github.com/undont/differ.nvim/internal/protocol"
 )
 
 const helloLine = `{"id":1,"method":"hello","params":{"client":"differ.nvim","protocol":1}}`
