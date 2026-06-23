@@ -59,6 +59,7 @@ local INPUT_HL = {
 ---@field return_tab integer
 ---@field session_tab integer
 ---@field keymaps table                   -- resolved merge keymaps (for the g? cheatsheet)
+---@field saved_autoformat any            -- the result buffer's prior disable_autoformat, restored on close
 ---@field diag_aug integer|nil            -- the DiagnosticChanged hook that hushes the result
 
 ---@type differ.MergeSession|nil
@@ -518,6 +519,9 @@ function M.close()
     local s = session
     session = nil
     restore_timeout() -- net in case the tab teardown didn't fire BufLeave on the result buf
+    if vim.api.nvim_buf_is_valid(s.result_buf) then
+        vim.b[s.result_buf].disable_autoformat = s.saved_autoformat -- give autoformat back
+    end
     -- drop the diagnostics hook; the producers re-lint the now-resolved file on their own
     if s.diag_aug then
         pcall(vim.api.nvim_del_augroup_by_id, s.diag_aug)
@@ -679,6 +683,11 @@ local function lay_out(root, relpath, model, layout)
     local cfg = require("differ").get_config()
     local km = cfg.keymaps.merge or require("differ.config").defaults.keymaps
     session.keymaps = km -- for the g? cheatsheet
+    -- the result is the real file, so a format-on-save would run on :w and choke on (or
+    -- mangle) the conflict markers. set conform's buffer-local opt-out for the session,
+    -- restored on close; honoured by any format_on_save gate that checks the flag
+    session.saved_autoformat = vim.b[result_buf].disable_autoformat
+    vim.b[result_buf].disable_autoformat = true
     local function rb(action, fn, desc)
         bind(result_buf, km[action], fn, desc)
     end

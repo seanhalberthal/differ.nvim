@@ -194,6 +194,8 @@ Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()
 | `q` | Close the merge tool |
 | `g?` | Help |
 
+The result buffer is the real worktree file, so `:w` writes it and stages it once the markers are gone. Because it's a real file, a format-on-save would otherwise run over the conflict markers; the merge tool sets `vim.b.disable_autoformat` (conform's opt-out) for the session, so honour that flag in your `format_on_save` gate if you format on save.
+
 ### Launchers (a starting point)
 
 differ ships no global launchers — only the in-view buffer maps above and the optional `command_alias`. These are the `<leader>` launchers I drive it with, as a lazy.nvim spec you can lift wholesale or trim to taste.

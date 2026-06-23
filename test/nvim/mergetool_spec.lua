@@ -228,6 +228,17 @@ describe(":Differ mergetool", function()
         assert.is_true(txt:find("next / previous conflict", 1, true) ~= nil)
         vim.api.nvim_win_close(float, true)
     end)
+
+    it("opts the result buffer out of format-on-save and restores it on close", function()
+        local root = conflict_repo()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+        assert.is_true(vim.b[s.result_buf].disable_autoformat)
+        local buf = s.result_buf
+        merge.close()
+        assert.is_nil(vim.b[buf].disable_autoformat) -- restored to its prior (unset) value
+    end)
 end)
 
 -- fire a buffer-local keymap by its description, so the test doesn't depend on <leader>
