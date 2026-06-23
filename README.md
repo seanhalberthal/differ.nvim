@@ -151,7 +151,10 @@ Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()
 | Key | Action |
 |---|---|
 | `<CR>` / `o` | Open the file under the cursor |
-| `]c` / `[c` | Step the selection |
+| `]f` / `[f` | Next / previous file |
+| `gg` / `G` | First / last file |
+| `]]` / `[[` | Next / previous section |
+| `]c` / `[c` | Next / previous hunk |
 | `i` | Toggle tree / name listing |
 | `c` / `C` / `O` | Collapse node / collapse all / expand all |
 | `s` / `u` / `S` / `U` | Stage / unstage file, or all |
@@ -280,6 +283,10 @@ require("differ").setup({
     prev_hunk = "[c",
     next_file = "]f",            -- diff; panel/history step the selection
     prev_file = "[f",
+    first_file = "gg",           -- panel: jump to the first/last file in the list
+    last_file = "G",
+    next_section = "]]",         -- panel: jump between sections (Staged/Unstaged/...)
+    prev_section = "[[",
     scroll_down = "f",           -- all three (shadows native f/b; set false to restore)
     scroll_up = "b",
     select = { "<CR>", "o" },    -- panel, history

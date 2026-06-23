@@ -731,7 +731,15 @@ function M.panel(opts)
     local function show_entry(entry, focus_line)
         local model = model_for(entry)
         if #model.hunks == 0 then
-            return false
+            -- a pure rename or copy has identical content on both sides, so it diffs
+            -- to zero hunks but is still a real change worth opening (the file just
+            -- moved). any other zero-hunk entry is stale: committed, staged away, or
+            -- reverted outside differ
+            local is_move = (entry.status == "R" or entry.status == "C")
+                and entry.previous_path ~= nil
+            if not is_move then
+                return false
+            end
         end
         local staging = stage_for(entry)
         if view and view:is_open() then
@@ -871,8 +879,12 @@ function M.panel(opts)
     panel.return_tab = return_tab
     if opts.open_first then
         -- land on the file (and line) :Differ was run from when it's in the change
-        -- set, else the first file; leave the cursor in the diff, not the panel
+        -- set, else the first file with real content (skipping pure renames, which
+        -- diff to a blank view); leave the cursor in the diff, not the panel
         local on_origin = origin_rel and panel:focus_file(origin_rel)
+        if not on_origin then
+            panel:focus_first_changed()
+        end
         panel:select(true)
         if on_origin and view then
             view:focus_new_line(origin_line)

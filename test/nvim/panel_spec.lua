@@ -3,8 +3,8 @@
 -- fed plain FileEntry lists (no git), since the panel is source-agnostic
 local Panel = require("differ.panel")
 
-local function fe(path, status)
-    return { path = path, status = status or "M", additions = 0, deletions = 0 }
+local function fe(path, status, add, del)
+    return { path = path, status = status or "M", additions = add or 0, deletions = del or 0 }
 end
 
 local function lines(p)
@@ -70,6 +70,84 @@ describe("panel navigation", function()
         p:goto_file("next")
         assert.are.equal(2, vim.api.nvim_win_get_cursor(p.winid)[1])
         assert.are.equal("b.lua", picked[#picked].path)
+        p:close()
+    end)
+
+    it("gg / G jump to the first / last file and open it", function()
+        local p, picked =
+            panel({ fe("a.lua", "M", 1, 0), fe("b.lua", "M", 1, 0), fe("c.lua", "M", 1, 0) })
+        p:open()
+        p:goto_edge("last")
+        assert.are.equal(3, vim.api.nvim_win_get_cursor(p.winid)[1])
+        assert.are.equal("c.lua", picked[#picked].path)
+        p:goto_edge("first")
+        assert.are.equal(1, vim.api.nvim_win_get_cursor(p.winid)[1])
+        assert.are.equal("a.lua", picked[#picked].path)
+        p:close()
+    end)
+
+    it("gg / G skip content-less pure renames at the edges", function()
+        -- a.lua and d.lua are pure renames (no hunks); the edge jumps step past them
+        -- to the first/last file that actually has a diff, mirroring the initial open
+        local p, picked = panel({
+            fe("a.lua", "R", 0, 0),
+            fe("b.lua", "M", 1, 0),
+            fe("c.lua", "M", 0, 2),
+            fe("d.lua", "R", 0, 0),
+        })
+        p:open()
+        p:goto_edge("first")
+        assert.are.equal("b.lua", picked[#picked].path)
+        p:goto_edge("last")
+        assert.are.equal("c.lua", picked[#picked].path)
+        p:close()
+    end)
+
+    it("gg / G still visit untracked files (zero numstat, but real content)", function()
+        -- untracked '?' files report 0/0 counts like a pure rename, but they render
+        -- their whole content, so the edge jumps must not skip them
+        local p, picked = panel({ fe("a.lua", "R", 0, 0), fe("z.lua", "?", 0, 0) })
+        p:open()
+        p:goto_edge("last")
+        assert.are.equal("z.lua", picked[#picked].path)
+        p:close()
+    end)
+
+    it("gg / G fall back to the absolute edge when every file is content-less", function()
+        local p, picked = panel({ fe("a.lua", "R", 0, 0), fe("b.lua", "R", 0, 0) })
+        p:open()
+        p:goto_edge("first")
+        assert.are.equal("a.lua", picked[#picked].path)
+        p:goto_edge("last")
+        assert.are.equal("b.lua", picked[#picked].path)
+        p:close()
+    end)
+
+    it("]] / [[ jump between sections, opening each section's first file", function()
+        local p, picked = panel({}, {
+            sections = {
+                { title = "Staged", entries = { fe("a.lua", "M", 1, 0) } },
+                { title = "Unstaged", entries = { fe("b.lua", "M", 1, 0) } },
+                { title = "Untracked", entries = { fe("z.lua", "?", 0, 0) } },
+            },
+        })
+        p:open()
+        p:goto_section("next") -- from Staged -> Unstaged
+        assert.are.equal("b.lua", picked[#picked].path)
+        p:goto_section("next") -- Unstaged -> Untracked
+        assert.are.equal("z.lua", picked[#picked].path)
+        p:goto_section("next") -- no further section: stays put
+        assert.are.equal("z.lua", picked[#picked].path)
+        p:goto_section("prev") -- Untracked -> Unstaged
+        assert.are.equal("b.lua", picked[#picked].path)
+        p:close()
+    end)
+
+    it("]] / [[ are inert in a single-section panel", function()
+        local p, picked = panel({ fe("a.lua", "M", 1, 0), fe("b.lua", "M", 1, 0) })
+        p:open()
+        p:goto_section("next")
+        assert.are.equal(0, #picked)
         p:close()
     end)
 
