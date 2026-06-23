@@ -658,10 +658,12 @@ end
 
 -- ]f / [f: move to the next/prev file row and open it (lockstep file stepping).
 -- wraps at the ends by default; `wrap == false` (the staging review flow) stops at
--- them. `keep_focus` is threaded to `_open` so in-view stepping stays in the diff window
+-- them. `keep_focus` is threaded to `_open` so in-view stepping stays in the diff
+-- window. returns whether a file was actually opened (false at a no-wrap list end)
 ---@param direction "next"|"prev"
 ---@param keep_focus boolean|nil
 ---@param wrap? boolean  -- default true; false stops at the list ends
+---@return boolean moved
 function Panel:goto_file(direction, keep_focus, wrap)
     -- step from the live cursor when the sidebar is visible, else from the last
     -- opened row so ]f/[f keeps working with the panel hidden
@@ -670,7 +672,7 @@ function Panel:goto_file(direction, keep_focus, wrap)
         or self:_first_file_line()
     local i = self:_file_row(from, direction, wrap)
     if not i then
-        return
+        return false
     end
     -- the file being left, for an optional session step hook (the pr forward-auto-mark)
     local left = self.meta[from] and self.meta[from].kind == "file" and self.meta[from].entry or nil
@@ -682,6 +684,7 @@ function Panel:goto_file(direction, keep_focus, wrap)
     if self.on_step then
         self.on_step(direction, left, self.meta[i].entry)
     end
+    return true
 end
 
 -- a pure rename/copy (status R/C with no added/deleted lines) diffs to nothing, so
@@ -872,8 +875,6 @@ end
 -- g?: a floating keymap cheatsheet, dismissed with <Esc> / g?
 function Panel:show_help()
     local lines = {
-        " differ panel",
-        "",
         " <CR> / o   open file / toggle fold",
         " c          close node / parent",
         " C / O      close / open all nodes",
@@ -883,42 +884,19 @@ function Panel:show_help()
         " ]c / [c    next / previous hunk",
         " f / b      scroll diff down / up",
         " i          toggle listing (tree / name)",
+        " de         go to the real file",
     }
     if self.actions then
         vim.list_extend(lines, {
             " s / u      stage / unstage file",
             " S / U      stage / unstage all",
             " X          discard file (confirm)",
+            " df         edit the real file (in review)",
             " R          refresh",
         })
     end
     vim.list_extend(lines, { " g?         this help" })
-    local width = 0
-    for _, l in ipairs(lines) do
-        width = math.max(width, #l)
-    end
-    local buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    vim.bo[buf].modifiable = false
-    vim.bo[buf].bufhidden = "wipe"
-    local win = vim.api.nvim_open_win(buf, true, {
-        relative = "editor",
-        width = width + 1,
-        height = #lines,
-        row = math.floor((vim.o.lines - #lines) / 2),
-        col = math.floor((vim.o.columns - width) / 2),
-        style = "minimal",
-        border = "rounded",
-        title = " Differ ",
-    })
-    local function close()
-        if vim.api.nvim_win_is_valid(win) then
-            pcall(vim.api.nvim_win_close, win, true)
-        end
-    end
-    for _, lhs in ipairs({ "q", "<Esc>", "g?" }) do
-        vim.keymap.set("n", lhs, close, { buffer = buf, nowait = true })
-    end
+    require("differ.ui.help").show(lines, { title = " Differ: panel " })
 end
 
 -- window appearance + buffer-local keymaps
@@ -986,6 +964,20 @@ function Panel:_setup_window()
     local function map(spec, fn, desc)
         bind(self.bufnr, spec, fn, "differ panel: " .. desc)
     end
+    -- de / df: file-targeted diff verbs (go-to-file, edit-in-review). open the row
+    -- under the cursor first so they act on it, not the last-shown diff, then defer to
+    -- the shared entry points, which act on the driven view and self-guard by source
+    local function diff_file_verb(run)
+        local lnum = vim.api.nvim_win_get_cursor(self.winid)[1]
+        local m = self.meta[lnum]
+        if not (m and m.kind == "file") then
+            return vim.notify("differ: put the cursor on a file", vim.log.levels.WARN)
+        end
+        if lnum ~= self.selected_row then
+            self:select()
+        end
+        run()
+    end
     map(km.select, function()
         self:select()
     end, "open / toggle fold")
@@ -1015,6 +1007,11 @@ function Panel:_setup_window()
     map(km.prev_hunk, function()
         require("differ").goto_hunk("prev")
     end, "previous hunk")
+    map(km.goto_file, function()
+        diff_file_verb(function()
+            require("differ").jump_to_file()
+        end)
+    end, "go to the real file")
     map(km.help, function()
         self:show_help()
     end, "help")
@@ -1055,6 +1052,11 @@ function Panel:_setup_window()
         map(km.refresh, function()
             self:refresh()
         end, "refresh")
+        map(km.edit_file, function()
+            diff_file_verb(function()
+                require("differ").edit_file()
+            end)
+        end, "edit the real file")
     end
     -- session-supplied maps the generic panel doesn't own (e.g. the pr viewed nav)
     for _, m in ipairs(self.extra_keymaps or {}) do

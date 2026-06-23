@@ -448,24 +448,28 @@ end
 
 -- ]f / [f. file mode: step to the next/previous commit. range mode: step file rows,
 -- crossing into the adjacent commit (auto-expanded) at a boundary. `keep_focus`
--- keeps focus in the diff window (in-view stepping)
+-- keeps focus in the diff window (in-view stepping). returns whether it actually
+-- stepped (false at the first/last commit or file row)
 ---@param direction "next"|"prev"
 ---@param keep_focus boolean|nil
+---@return boolean moved
 function History:step(direction, keep_focus)
     local fwd = direction == "next"
     if self.mode == "file" then
         local i = self.index + (fwd and 1 or -1)
         if i < 1 or i > #self.commits then
-            return
+            return false
         end
         self:_move_cursor(commit_line(i))
-        return self:_open(i, keep_focus)
+        self:_open(i, keep_focus)
+        return true
     end
 
     local ci = self.index
     local fi = (self.file_index or 1) + (fwd and 1 or -1)
     if fi >= 1 and fi <= #self:_files(ci) then
-        return self:_open_file(ci, fi, keep_focus)
+        self:_open_file(ci, fi, keep_focus)
+        return true
     end
     -- crossed the commit boundary: find the adjacent commit that has files
     local step = fwd and 1 or -1
@@ -473,10 +477,12 @@ function History:step(direction, keep_focus)
     while ti >= 1 and ti <= #self.commits do
         local files = self:_files(ti)
         if #files > 0 then
-            return self:_open_file(ti, fwd and 1 or #files, keep_focus)
+            self:_open_file(ti, fwd and 1 or #files, keep_focus)
+            return true
         end
         ti = ti + step
     end
+    return false
 end
 
 -- scroll the *diff view* a quarter page (the origin window), not the panel list,
@@ -495,7 +501,7 @@ end
 
 -- g?: a floating keymap cheatsheet, dismissed with <Esc> / q / g?
 function History:show_help()
-    local lines = { " differ file history", "" }
+    local lines = {}
     if self.mode == "range" then
         vim.list_extend(lines, {
             " <CR> / o   open file / toggle fold",
@@ -513,32 +519,7 @@ function History:show_help()
         " f / b      scroll diff down / up",
         " g?         this help",
     })
-    local width = 0
-    for _, l in ipairs(lines) do
-        width = math.max(width, #l)
-    end
-    local buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    vim.bo[buf].modifiable = false
-    vim.bo[buf].bufhidden = "wipe"
-    local win = vim.api.nvim_open_win(buf, true, {
-        relative = "editor",
-        width = width + 1,
-        height = #lines,
-        row = math.floor((vim.o.lines - #lines) / 2),
-        col = math.floor((vim.o.columns - width) / 2),
-        style = "minimal",
-        border = "rounded",
-        title = " Differ ",
-    })
-    local function close()
-        if vim.api.nvim_win_is_valid(win) then
-            pcall(vim.api.nvim_win_close, win, true)
-        end
-    end
-    for _, lhs in ipairs({ "q", "<Esc>", "g?" }) do
-        vim.keymap.set("n", lhs, close, { buffer = buf, nowait = true })
-    end
+    require("differ.ui.help").show(lines, { title = " Differ: history " })
 end
 
 -- window appearance + buffer-local keymaps
