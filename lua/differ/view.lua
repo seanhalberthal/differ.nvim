@@ -717,20 +717,14 @@ end
 
 -- move the primary window's cursor to the first unstaged hunk (or first hunk). run
 -- on open and on every file switch so ]f / [f and selecting a file drop you on the
--- first thing to review rather than wherever the cursor happened to be. `above` lands
--- one line up (the context line) so the first change is visible with a line above it,
--- used on the initial open; file switches land directly on the hunk
----@param above? boolean
-function View:_focus_first_hunk(above)
+-- first thing to review rather than wherever the cursor happened to be
+function View:_focus_first_hunk()
     local col = self.columns[1]
     if not (col and col.winid and vim.api.nvim_win_is_valid(col.winid)) then
         return
     end
     local lnum = self:_first_review_line(col)
     if lnum then
-        if above then
-            lnum = math.max(1, lnum - 1)
-        end
         pcall(vim.api.nvim_win_set_cursor, col.winid, { lnum, 0 })
     end
 end
@@ -1268,8 +1262,8 @@ end
 ---@return differ.View
 function View:open()
     self:_relayout()
-    self:_focus_first_hunk(true) -- start one line above the first hunk so it's visible with context
-    self:_paint_cursorline() -- repaint after the cursor moved off line 1
+    self:_focus_first_hunk() -- land on the first hunk; the tinted cursor line shows its kind
+    self:_paint_cursorline()
     return self
 end
 
