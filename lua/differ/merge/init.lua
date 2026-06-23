@@ -58,6 +58,7 @@ local INPUT_HL = {
 ---@field win_side table<integer, string> -- window id -> side (for the winbar)
 ---@field return_tab integer
 ---@field session_tab integer
+---@field keymaps table                   -- resolved merge keymaps (for the g? cheatsheet)
 ---@field diag_aug integer|nil            -- the DiagnosticChanged hook that hushes the result
 
 ---@type differ.MergeSession|nil
@@ -537,6 +538,44 @@ function M.close()
     end
 end
 
+-- g?: a floating keymap cheatsheet for the merge result buffer, mirroring the diff
+-- view's. rows read the session's resolved keymaps so a configured lhs shows correctly
+local function show_help()
+    if not session then
+        return
+    end
+    local km = session.keymaps
+    local function fmt(spec)
+        return type(spec) == "table" and table.concat(spec, " / ") or tostring(spec)
+    end
+    local function pair(a, b)
+        return fmt(a) .. " / " .. fmt(b)
+    end
+    local rows = {
+        { pair(km.next_conflict, km.prev_conflict), "next / previous conflict" },
+        { fmt(km.choose_ours), "take ours" },
+        { fmt(km.choose_theirs), "take theirs" },
+        { fmt(km.choose_base), "take base" },
+        { fmt(km.choose_all), "take both (ours then theirs)" },
+        { fmt(km.choose_none), "drop the conflict" },
+        { ":w", "write the file (auto-stages once resolved)" },
+        { "q", "close the merge tool" },
+        { fmt(km.help), "this help" },
+    }
+    local keyw = 0
+    for _, r in ipairs(rows) do
+        keyw = math.max(keyw, #r[1])
+    end
+    local lines = {}
+    for _, r in ipairs(rows) do
+        lines[#lines + 1] = (" %-" .. keyw .. "s   %s"):format(r[1], r[2])
+    end
+    -- dismiss on the configured help key too, not just the hardcoded q/<Esc>
+    local dismiss = { "q", "<Esc>" }
+    vim.list_extend(dismiss, type(km.help) == "table" and km.help or { km.help })
+    require("differ.ui.help").show(lines, { title = " Differ: merge ", dismiss = dismiss })
+end
+
 -- lay out the render in a fresh session tab and wire navigation
 ---@param root string
 ---@param relpath string
@@ -639,6 +678,7 @@ local function lay_out(root, relpath, model, layout)
     -- wasn't called, like the diff view does
     local cfg = require("differ").get_config()
     local km = cfg.keymaps.merge or require("differ.config").defaults.keymaps
+    session.keymaps = km -- for the g? cheatsheet
     local function rb(action, fn, desc)
         bind(result_buf, km[action], fn, desc)
     end
@@ -663,6 +703,7 @@ local function lay_out(root, relpath, model, layout)
     rb("choose_none", function()
         resolve_choice("none")
     end, "differ: drop the conflict")
+    rb("help", show_help, "differ: keymap help")
     -- q closes the tool (conventional, no config action)
     vim.keymap.set(
         "n",

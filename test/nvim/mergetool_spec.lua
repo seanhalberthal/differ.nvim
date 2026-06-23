@@ -197,6 +197,37 @@ describe(":Differ mergetool", function()
         assert.are.equal(1500, vim.o.timeoutlen)
         vim.o.timeoutlen = saved
     end)
+
+    it("opens a g? keymap cheatsheet listing the conflict verbs", function()
+        local root = conflict_repo()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+
+        local cb
+        for _, m in ipairs(vim.api.nvim_buf_get_keymap(s.result_buf, "n")) do
+            if m.desc == "differ: keymap help" then
+                cb = m.callback
+            end
+        end
+        assert.is_not_nil(cb)
+
+        cb() -- opens the floating cheatsheet
+        local float
+        for _, w in ipairs(vim.api.nvim_list_wins()) do
+            if vim.api.nvim_win_get_config(w).relative ~= "" then
+                float = w
+            end
+        end
+        assert.is_not_nil(float)
+        local txt = table.concat(
+            vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(float), 0, -1, false),
+            "\n"
+        )
+        assert.is_true(txt:find("take ours", 1, true) ~= nil)
+        assert.is_true(txt:find("next / previous conflict", 1, true) ~= nil)
+        vim.api.nvim_win_close(float, true)
+    end)
 end)
 
 -- fire a buffer-local keymap by its description, so the test doesn't depend on <leader>

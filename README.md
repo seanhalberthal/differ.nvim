@@ -191,6 +191,8 @@ Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()
 | `<leader>co` / `ct` / `cb` | Take ours / theirs / base |
 | `<leader>ca` | Take both (ours then theirs) |
 | `dx` | Drop the conflict region |
+| `q` | Close the merge tool |
+| `g?` | Help |
 
 ### Launchers (a starting point)
 
