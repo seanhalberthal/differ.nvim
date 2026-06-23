@@ -427,6 +427,60 @@ describe(":Differ panel", function()
         p:close()
     end)
 
+    it("opens a pure rename's diff instead of reporting no changes", function()
+        local root = fresh_repo()
+        -- a staged rename with no content edit: old and new sides are identical, so
+        -- the file diffs to zero hunks but is still a real change worth showing
+        git(root, "mv", "a.lua", "b.lua")
+        vim.cmd.edit(root .. "/b.lua")
+
+        git_src.panel({})
+        local p = Panel.current()
+        local origin_buf = vim.api.nvim_win_get_buf(p.origin_win)
+
+        local before = #_G.notifs
+        vim.api.nvim_win_set_cursor(p.winid, { file_line(p, "b.lua", true), 0 })
+        p:select()
+
+        -- the diff opened (a new differ:// buffer replaced the origin buffer)...
+        assert.are_not.equal(origin_buf, vim.api.nvim_win_get_buf(p.origin_win))
+        vim.api.nvim_set_current_win(p.origin_win)
+        local v = require("differ.view").current()
+        assert.is_not_nil(v)
+        assert.are.equal("b.lua", v.model.path)
+        assert.are.equal(V1, v.model.old_text) -- a.lua @ HEAD
+        assert.are.equal(V1, v.model.new_text) -- b.lua @ index (identical)
+        -- ...and no "no changes for b.lua" notification fired
+        for i = before + 1, #_G.notifs do
+            assert.is_nil((_G.notifs[i].msg or ""):find("no changes", 1, true))
+        end
+        p:close()
+    end)
+
+    it("open_first skips content-less renames and lands on the first real change", function()
+        local root = fresh_repo()
+        write(root .. "/keep.lua", "keep\n") -- an untouched tracked file to open from
+        write(root .. "/z.lua", "z1\nz2\n")
+        git(root, "add", "keep.lua", "z.lua")
+        git(root, "commit", "-q", "-am", "more files")
+        git(root, "mv", "a.lua", "renamed.lua") -- staged pure rename, zero content delta
+        write(root .. "/z.lua", "z1x\nz2\n") -- z.lua modified in the worktree (real change)
+        -- open from keep.lua: it's in the repo (so the root resolves) but not in the
+        -- change set, so open_first falls through to its first-changed pick
+        vim.cmd.edit(root .. "/keep.lua")
+
+        git_src.panel({ open_first = true })
+        local p = Panel.current()
+        -- the rename is the first listed file (Staged section), but it diffs to nothing;
+        -- the landing skips it for z.lua, the first entry with real content
+        assert.are.equal(file_line(p, "z.lua"), p.selected_row)
+        vim.api.nvim_set_current_win(p.origin_win)
+        local v = require("differ.view").current()
+        assert.is_not_nil(v)
+        assert.are.equal("z.lua", v.model.path)
+        require("differ.git").close()
+    end)
+
     it("diffs a staged entry HEAD↔index and an unstaged entry index↔worktree", function()
         local root = fresh_repo()
         -- stage one version of a.lua, then edit further in the worktree
@@ -492,6 +546,22 @@ describe(":Differ panel staging (slice C)", function()
             lhs[m.lhs] = true
         end
         return lhs
+    end
+    -- 1-based line of the dir row whose full path is `dir_path`
+    local function dir_line(p, dir_path)
+        for i, m in ipairs(p.meta) do
+            if m.kind == "dir" and m.dir_path == dir_path then
+                return i
+            end
+        end
+    end
+    -- 1-based line of the section header whose title is `title`
+    local function header_line(p, title)
+        for i, m in ipairs(p.meta) do
+            if m.kind == "header" and m.title == title then
+                return i
+            end
+        end
     end
 
     it("stages and unstages the file under the cursor", function()
@@ -566,6 +636,80 @@ describe(":Differ panel staging (slice C)", function()
         vim.fn.confirm = orig
 
         assert.are.equal(0, vim.fn.filereadable(root .. "/u.lua"))
+        p:close()
+    end)
+
+    it("stages and unstages every file under a directory row", function()
+        local root = fresh_repo()
+        -- two files under src/, plus a sibling at the root so src/ stays a foldable
+        -- dir row (a sole common prefix 2+ deep would be stripped to a subtitle)
+        vim.fn.mkdir(root .. "/src", "p")
+        write(root .. "/src/a.lua", "a\n")
+        write(root .. "/src/b.lua", "b\n")
+        write(root .. "/top.lua", "t\n")
+        vim.cmd.edit(root .. "/top.lua")
+        git_src.panel({})
+        local p = Panel.current()
+        assert.is_not_nil(entry_of(p, "src/a.lua", false))
+        assert.is_not_nil(entry_of(p, "src/b.lua", false))
+
+        vim.api.nvim_win_set_cursor(p.winid, { dir_line(p, "src"), 0 })
+        p:stage_op("stage")
+        assert.is_not_nil(entry_of(p, "src/a.lua", true)) -- both files staged
+        assert.is_not_nil(entry_of(p, "src/b.lua", true))
+        assert.is_nil(entry_of(p, "top.lua", true)) -- the sibling is untouched
+
+        vim.api.nvim_win_set_cursor(p.winid, { dir_line(p, "src"), 0 })
+        p:stage_op("unstage")
+        assert.is_not_nil(entry_of(p, "src/a.lua", false)) -- both back to unstaged
+        assert.is_not_nil(entry_of(p, "src/b.lua", false))
+        p:close()
+    end)
+
+    it("unstages a whole section from its header (deep prefix stripped, no dir row)", function()
+        local root = fresh_repo()
+        -- every staged file shares a 2+-level prefix, so the tree strips it to a
+        -- header subtitle and emits no dir row: the header is the only group target
+        vim.fn.mkdir(root .. "/lua/panel", "p")
+        write(root .. "/lua/panel/init.lua", "i\n")
+        write(root .. "/lua/panel/render.lua", "r\n")
+        git(root, "add", "lua/panel/init.lua", "lua/panel/render.lua")
+        write(root .. "/loose.lua", "l\n") -- an unstaged file so the panel isn't all-staged
+        vim.cmd.edit(root .. "/loose.lua")
+        git_src.panel({})
+        local p = Panel.current()
+        assert.is_nil(dir_line(p, "lua/panel")) -- confirm: prefix stripped, no dir row
+        assert.is_not_nil(entry_of(p, "lua/panel/init.lua", true))
+
+        vim.api.nvim_win_set_cursor(p.winid, { header_line(p, "Staged"), 0 })
+        p:stage_op("unstage")
+        assert.is_nil(entry_of(p, "lua/panel/init.lua", true)) -- whole section unstaged
+        assert.is_nil(entry_of(p, "lua/panel/render.lua", true))
+        assert.is_not_nil(entry_of(p, "lua/panel/init.lua", false))
+        p:close()
+    end)
+
+    it("discards every file under a directory row (after confirm)", function()
+        local root = fresh_repo()
+        vim.fn.mkdir(root .. "/src", "p")
+        write(root .. "/src/a.lua", "a\n")
+        write(root .. "/src/b.lua", "b\n")
+        write(root .. "/top.lua", "t\n")
+        vim.cmd.edit(root .. "/top.lua")
+        git_src.panel({})
+        local p = Panel.current()
+        vim.api.nvim_win_set_cursor(p.winid, { dir_line(p, "src"), 0 })
+
+        local orig = vim.fn.confirm
+        vim.fn.confirm = function()
+            return 1
+        end
+        p:discard()
+        vim.fn.confirm = orig
+
+        assert.are.equal(0, vim.fn.filereadable(root .. "/src/a.lua")) -- both deleted
+        assert.are.equal(0, vim.fn.filereadable(root .. "/src/b.lua"))
+        assert.are.equal(1, vim.fn.filereadable(root .. "/top.lua")) -- sibling kept
         p:close()
     end)
 

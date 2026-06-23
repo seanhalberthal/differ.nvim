@@ -14,8 +14,11 @@ local FOLD_OPEN, FOLD_CLOSED = "▾", "▸"
 ---@field kind "root"|"help"|"blank"|"header"|"dir"|"file"|"foothead"|"footrev"
 ---@field entry differ.FileEntry|nil
 ---@field path string|nil
+---@field dir_path string|nil      -- dir rows: full repo-relative dir path (prefix re-attached)
+---@field section integer|nil      -- dir rows: 1-based block/section index, for dir-level staging
 ---@field status string|nil
 ---@field collapsed boolean|nil
+---@field title string|nil        -- header rows: the section title
 ---@field depth integer|nil       -- tree depth (dir + file rows), for parent lookup
 ---@field file_index integer|nil  -- 1-based position among all files (fold-independent); stamped by the panel
 ---@field status_col integer|nil  -- byte col of the status letter (file rows)
@@ -80,13 +83,13 @@ function M.lines(blocks, header, icon_for, footer, width)
         lines[#lines + 1] = ""
         meta[#meta + 1] = { kind = "blank" }
     end
-    for _, block in ipairs(blocks) do
+    for bi, block in ipairs(blocks) do
         if block.title or block.prefix then
             -- count is the section's true file total (fold-independent); fall back
             -- to the visible file rows when the caller doesn't supply it (tests)
             local n = block.count or count_files(block.rows)
             local head = block.title and ("%s (%d)"):format(block.title, n) or ""
-            local m = { kind = "header" }
+            local m = { kind = "header", section = bi, title = block.title }
             if block.prefix then
                 local sep = head ~= "" and " · " or ""
                 m.prefix_col = #head -- byte col where the dimmed " · prefix" begins
@@ -104,6 +107,11 @@ function M.lines(blocks, header, icon_for, footer, width)
                 meta[#meta + 1] = {
                     kind = "dir",
                     path = row.path,
+                    -- full repo-relative dir path: the tree strips a deep common
+                    -- prefix from `row.path` for display, so re-attach it (block.prefix)
+                    -- to match against entry paths for dir-level staging
+                    dir_path = (block.prefix or "") .. row.path,
+                    section = bi,
                     collapsed = row.collapsed,
                     depth = row.depth,
                     name_col = #prefix,

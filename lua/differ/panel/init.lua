@@ -174,6 +174,17 @@ function Panel:_first_file_line()
     return 1
 end
 
+-- move the cursor to the first visitable file row, skipping pure renames (which diff
+-- to a blank view) but landing on untracked files (zero numstat counts, yet real
+-- content). falls back to the first file when every entry is a blank rename. shares
+-- the edge-jump logic so the initial open and [[/]] agree on what's visitable
+function Panel:focus_first_changed()
+    local row = self:_edge_file_row("first")
+    if row then
+        pcall(vim.api.nvim_win_set_cursor, self.winid, { row, 0 })
+    end
+end
+
 -- move the cursor to `path`'s file row if it's currently rendered, returning whether
 -- it was found; lets :Differ open on the current file rather than the first
 ---@param path string -- repo-relative
@@ -514,11 +525,49 @@ function Panel:select(keep_focus)
     end
 end
 
--- the FileEntry under the cursor, or nil if the cursor isn't on a file row
----@return differ.FileEntry|nil
-function Panel:_cursor_entry()
+-- every FileEntry under a directory row, scoped to that row's own section (the same
+-- dir path can list under Staged and Unstaged at once, so a section-blind path match
+-- would stage the wrong side). collapsed dirs work too: this reads the section's
+-- entries, not the rendered rows
+---@param m differ.panel.LineMeta -- a dir row's meta
+---@return differ.FileEntry[]
+function Panel:_dir_entries(m)
+    local sec = self.sections[m.section]
+    if not sec then
+        return {}
+    end
+    local prefix = m.dir_path .. "/"
+    local out = {}
+    for _, e in ipairs(sec.entries) do
+        if e.path:sub(1, #prefix) == prefix then
+            out[#out + 1] = e
+        end
+    end
+    return out
+end
+
+-- the entries a stage/unstage/discard acts on from the cursor row: the single file
+-- under the cursor, every file beneath a directory row, or every file in a section
+-- when the cursor is on its header (the only target for a section whose shared deep
+-- prefix is stripped to a subtitle, leaving no dir row). also returns a label for the
+-- discard confirm. empty when the cursor isn't on a file, dir, or header row
+---@return differ.FileEntry[] entries, string|nil label
+function Panel:_op_targets()
     local m = self.winid and self.meta[vim.api.nvim_win_get_cursor(self.winid)[1]]
-    return m and m.kind == "file" and m.entry or nil
+    if not m then
+        return {}, nil
+    end
+    if m.kind == "file" then
+        return { m.entry }, m.entry.path
+    end
+    if m.kind == "dir" then
+        return self:_dir_entries(m), m.dir_path .. "/"
+    end
+    if m.kind == "header" then
+        local sec = self.sections[m.section]
+        return sec and vim.list_slice(sec.entries) or {}, m.title or "section"
+    end
+    return {}, nil
 end
 
 -- re-read the model (after a stage op or on focus) and repaint, keeping the cursor
@@ -532,7 +581,8 @@ function Panel:refresh()
     self:_restore_cursor(lnum)
 end
 
--- s/u/S/U: stage or unstage the file under the cursor (or all), then refresh
+-- s/u/S/U: stage or unstage the cursor's target (a file, or every file under a
+-- directory row) or all, then refresh
 ---@param op "stage"|"unstage"|"stage_all"|"unstage_all"
 function Panel:stage_op(op)
     if not self.actions then
@@ -541,27 +591,33 @@ function Panel:stage_op(op)
     if op == "stage_all" or op == "unstage_all" then
         self.actions[op]()
     else
-        local entry = self:_cursor_entry()
-        if not entry then
+        local entries = self:_op_targets()
+        if #entries == 0 then
             return
         end
-        self.actions[op](entry)
+        for _, e in ipairs(entries) do
+            self.actions[op](e)
+        end
     end
     self:refresh()
 end
 
--- X: discard the file under the cursor after a confirm (destructive), then refresh
+-- X: discard the cursor's target after a confirm (destructive), then refresh. on a
+-- directory row, discards every file beneath it
 function Panel:discard()
     if not self.actions then
         return
     end
-    local entry = self:_cursor_entry()
-    if not entry then
+    local entries, label = self:_op_targets()
+    if #entries == 0 then
         return
     end
-    local choice = vim.fn.confirm(("Discard changes to %s?"):format(entry.path), "&Yes\n&No", 2)
+    local what = #entries == 1 and entries[1].path or ("%s (%d files)"):format(label, #entries)
+    local choice = vim.fn.confirm(("Discard changes to %s?"):format(what), "&Yes\n&No", 2)
     if choice == 1 then
-        self.actions.discard(entry)
+        for _, e in ipairs(entries) do
+            self.actions.discard(e)
+        end
         self:refresh()
     end
 end
@@ -628,6 +684,138 @@ function Panel:goto_file(direction, keep_focus, wrap)
     end
 end
 
+-- a pure rename/copy (status R/C with no added/deleted lines) diffs to nothing, so
+-- landing on it shows a blank view. untracked/added files report zero numstat counts
+-- too (git doesn't diff them) but render their whole content, so they're not blank
+---@param e differ.FileEntry
+---@return boolean
+local function is_blank_rename(e)
+    return (e.status == "R" or e.status == "C") and (e.additions or 0) + (e.deletions or 0) == 0
+end
+
+-- the first/last visitable file row, skipping pure renames (blank diffs) and falling
+-- back to the absolute first/last file row when every entry is a blank rename. the
+-- edge jumps skip those the way the initial open does (focus_first_changed)
+---@param edge "first"|"last"
+---@return integer|nil
+function Panel:_edge_file_row(edge)
+    local fallback, visitable
+    local from = edge == "first" and 0 or #self.meta + 1
+    local direction = edge == "first" and "next" or "prev"
+    local i = self:_file_row(from, direction, false)
+    while i do
+        fallback = fallback or i
+        if not is_blank_rename(self.meta[i].entry) then
+            visitable = i
+            break
+        end
+        i = self:_file_row(i, direction, false)
+    end
+    return visitable or fallback
+end
+
+-- [[ / ]]: jump straight to the first/last content-bearing file row and open it,
+-- skipping pure renames (blank diffs). `keep_focus` is threaded to `_open` so
+-- in-view jumping stays in the diff window
+---@param edge "first"|"last"
+---@param keep_focus boolean|nil
+function Panel:goto_edge(edge, keep_focus)
+    local row = self:_edge_file_row(edge)
+    if not row then
+        return
+    end
+    self.selected_row = row
+    if self:is_open() then
+        vim.api.nvim_win_set_cursor(self.winid, { row, 0 })
+    end
+    self:_open(self.meta[row].entry, keep_focus)
+end
+
+-- the meta rows of the section headers, in order. titled blocks (Staged/Unstaged/
+-- Untracked) render a header; an untitled single-section panel (rev-pair/history)
+-- has none, so section nav is inert there
+---@return integer[]
+function Panel:_header_rows()
+    local rows = {}
+    for i, m in ipairs(self.meta) do
+        if m.kind == "header" then
+            rows[#rows + 1] = i
+        end
+    end
+    return rows
+end
+
+-- the first visitable file row inside the section beginning at `header_row` (down to
+-- the next header or the list end), skipping pure renames; falls back to the section's
+-- first file row, or nil when the section has no visible file rows (all folded away)
+---@param header_row integer
+---@return integer|nil
+function Panel:_section_first_file(header_row)
+    local stop = #self.meta
+    for i = header_row + 1, #self.meta do
+        if self.meta[i].kind == "header" then
+            stop = i - 1
+            break
+        end
+    end
+    local fallback
+    for i = header_row + 1, stop do
+        local m = self.meta[i]
+        if m.kind == "file" then
+            fallback = fallback or i
+            if not is_blank_rename(m.entry) then
+                return i
+            end
+        end
+    end
+    return fallback
+end
+
+-- ]] / [[: jump to the next/prev section and open its first (visitable) file. with a
+-- section fully folded away its header still gets the cursor, so the motion never
+-- stalls. inert in single-section panels. `keep_focus` is threaded to `_open`
+---@param direction "next"|"prev"
+---@param keep_focus boolean|nil
+function Panel:goto_section(direction, keep_focus)
+    local headers = self:_header_rows()
+    if #headers < 2 then
+        return
+    end
+    local from = self:is_open() and vim.api.nvim_win_get_cursor(self.winid)[1]
+        or self.selected_row
+        or 1
+    -- the index of the section the cursor sits in: the last header at or above it
+    local ci = 0
+    for k, h in ipairs(headers) do
+        if h <= from then
+            ci = k
+        else
+            break
+        end
+    end
+    -- explicit branch, not `cond and a or b`: at the last section headers[ci+1] is nil,
+    -- which the and/or form would silently fold into the prev-section branch
+    local target
+    if direction == "next" then
+        target = headers[ci + 1]
+    else
+        target = headers[ci - 1]
+    end
+    if not target then
+        return
+    end
+    local file = self:_section_first_file(target)
+    if file then
+        self.selected_row = file
+        if self:is_open() then
+            vim.api.nvim_win_set_cursor(self.winid, { file, 0 })
+        end
+        self:_open(self.meta[file].entry, keep_focus)
+    elseif self:is_open() then
+        vim.api.nvim_win_set_cursor(self.winid, { target, 0 })
+    end
+end
+
 -- the file selection's entry: the live cursor row when the sidebar is open, else the
 -- last opened row (so it works with the panel hidden). nil if neither is a file row
 ---@return differ.FileEntry|nil
@@ -690,6 +878,8 @@ function Panel:show_help()
         " c          close node / parent",
         " C / O      close / open all nodes",
         " ]f / [f    next / previous file",
+        " gg / G     first / last file",
+        " ]] / [[    next / previous section",
         " ]c / [c    next / previous hunk",
         " f / b      scroll diff down / up",
         " i          toggle listing (tree / name)",
@@ -805,6 +995,18 @@ function Panel:_setup_window()
     map(km.prev_file, function()
         self:goto_file("prev")
     end, "previous file")
+    map(km.first_file, function()
+        self:goto_edge("first")
+    end, "first file")
+    map(km.last_file, function()
+        self:goto_edge("last")
+    end, "last file")
+    map(km.next_section, function()
+        self:goto_section("next")
+    end, "next section")
+    map(km.prev_section, function()
+        self:goto_section("prev")
+    end, "previous section")
     -- next/prev hunk drive the diff view's hunk nav from the panel (bound buffer-
     -- locally in the diff window too), so hunk stepping works from either side
     map(km.next_hunk, function()
