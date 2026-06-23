@@ -705,14 +705,29 @@ end)
 describe("view cursor-line overlay", function()
     local cursor_ns = vim.api.nvim_create_namespace("differ.cursorline")
 
+    local CURSORLINE = {
+        differCursorLine = true,
+        differCursorLineAdd = true,
+        differCursorLineDelete = true,
+    }
+
     local function overlay_rows(buf)
         local rows = {}
         for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, cursor_ns, 0, -1, { details = true })) do
-            if m[4].hl_group == "differCursorLine" then
+            if CURSORLINE[m[4].hl_group] then
                 rows[#rows + 1] = m[2]
             end
         end
         return rows
+    end
+
+    -- the cursorline hl_group at 0-based `row`, or nil
+    local function overlay_hl(buf, row)
+        for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, cursor_ns, 0, -1, { details = true })) do
+            if CURSORLINE[m[4].hl_group] and m[2] == row then
+                return m[4].hl_group
+            end
+        end
     end
 
     it("paints one overlay on the cursor row and follows the cursor", function()
@@ -746,6 +761,67 @@ describe("view cursor-line overlay", function()
         -- focus opens on the first column; the off-side column carries no overlay
         assert.are.equal(1, #overlay_rows(left.bufnr))
         assert.are.equal(0, #overlay_rows(right.bufnr))
+        v:close()
+    end)
+
+    it("tints the cursor overlay by the row's add/delete kind", function()
+        vim.cmd("silent! only")
+        local v = View.new(model("a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local buf, win = v.columns[1].bufnr, v.columns[1].winid
+        local line_hl = extmarks(buf)
+        local add_row, del_row, ctx_row
+        for row = 0, vim.api.nvim_buf_line_count(buf) - 1 do
+            if line_hl[row] == "differLineAdd" then
+                add_row = add_row or row
+            elseif line_hl[row] == "differLineDelete" then
+                del_row = del_row or row
+            elseif line_hl[row] == nil then
+                ctx_row = ctx_row or row
+            end
+        end
+        assert.is_not_nil(add_row)
+        assert.is_not_nil(del_row)
+
+        local function hl_at(row)
+            vim.api.nvim_win_set_cursor(win, { row + 1, 0 })
+            vim.api.nvim_exec_autocmds("CursorMoved", { buffer = buf })
+            return overlay_hl(buf, row)
+        end
+        assert.are.equal("differCursorLineAdd", hl_at(add_row))
+        assert.are.equal("differCursorLineDelete", hl_at(del_row))
+        if ctx_row then
+            assert.are.equal("differCursorLine", hl_at(ctx_row)) -- neutral off the change
+        end
+        v:close()
+    end)
+
+    it("falls back to a neutral overlay when cursorline_tint is false", function()
+        vim.cmd("silent! only")
+        local v = View.new(model("a\nb\nc\n", "a\nB\nc\n"), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+            cursorline_tint = false,
+        })
+        v:open()
+        local buf, win = v.columns[1].bufnr, v.columns[1].winid
+        local line_hl = extmarks(buf)
+        local chg_row
+        for row = 0, vim.api.nvim_buf_line_count(buf) - 1 do
+            if line_hl[row] == "differLineAdd" or line_hl[row] == "differLineDelete" then
+                chg_row = row
+                break
+            end
+        end
+        assert.is_not_nil(chg_row)
+        vim.api.nvim_win_set_cursor(win, { chg_row + 1, 0 })
+        vim.api.nvim_exec_autocmds("CursorMoved", { buffer = buf })
+        assert.are.equal("differCursorLine", overlay_hl(buf, chg_row)) -- no tint
         v:close()
     end)
 end)

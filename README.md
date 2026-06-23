@@ -271,6 +271,8 @@ require("differ").diff({
 require("differ").setup({
   layout = "stacked",            -- "stacked" | "split", toggleable per-view
   context = 10,                  -- context lines (math.huge = full file)
+  cursorline_tint = true,        -- tint the cursor line by add/remove so the change
+                                 -- kind reads under the cursor; false = plain neutral
   deep_diff = {
     enabled = true,
     granularity = "word",        -- "word" | "char"

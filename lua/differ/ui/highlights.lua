@@ -205,10 +205,15 @@ end
 ---@return table<string, vim.api.keyset.highlight>
 local function diff_bg_groups(p)
     local base = bg_of({ "Normal" }, 0x14161b)
-    local line, word = 0.16, 0.42 -- blend weights toward the vivid colour; tune to taste
+    local line, cursor, word = 0.16, 0.28, 0.42 -- blend weights toward the vivid colour; tune to taste
     return {
         differLineAdd = { bg = blend(p.green, base, line) },
         differLineDelete = { bg = blend(p.red, base, line) },
+        -- the cursor line over an add/delete line: the same hue a notch stronger than the
+        -- line tint, so it reads as the current line yet still as added/removed (word
+        -- spans at 0.42 still show through). sit between the line and word weights
+        differCursorLineAdd = { bg = blend(p.green, base, cursor) },
+        differCursorLineDelete = { bg = blend(p.red, base, cursor) },
         differWordAdd = { bg = blend(p.green, base, word) },
         differWordDelete = { bg = blend(p.red, base, word) },
     }

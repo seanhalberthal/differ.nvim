@@ -80,6 +80,7 @@ function M.diff_model(model, opts)
             context = opts.context or cfg.context,
             wrap = cfg.wrap,
             counter = cfg.diff_counter,
+            cursorline_tint = cfg.cursorline_tint,
             deep_diff = cfg.deep_diff,
             keymaps = cfg.keymaps.diff,
             staging = opts.staging,

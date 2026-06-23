@@ -12,6 +12,7 @@
 ---@field context integer
 ---@field wrap boolean
 ---@field diff_counter boolean
+---@field cursorline_tint boolean
 ---@field deep_diff { enabled: boolean, granularity: "word"|"char", similarity_threshold: number }
 ---@field comments { inline: boolean, collapsed: boolean }
 ---@field panel differ.Config.Panel
@@ -34,6 +35,10 @@ M.defaults = {
     context = 10, -- generous default; tight context makes diffs hard to read
     wrap = true, -- soft-wrap long lines in the diff view
     diff_counter = true, -- "hunk K/N" counter in the diff window's winbar
+    -- tint the diff cursor line by the line's change kind (a stronger add/delete
+    -- shade) so the add/remove colour survives under the cursor; false falls back to
+    -- a plain neutral cursor line
+    cursorline_tint = true,
     deep_diff = {
         enabled = true,
         granularity = "word",

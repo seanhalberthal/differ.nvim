@@ -72,6 +72,7 @@ local armed_view = nil
 ---@field context integer
 ---@field wrap boolean  -- soft-wrap long lines in the diff windows
 ---@field counter boolean  -- hunk-counter winbar on the diff windows
+---@field cursorline_tint boolean  -- tint the cursor line by add/delete kind
 ---@field deep_diff table
 ---@field keymaps table
 ---@field can_stage boolean  -- session-level: bind s/u (worktree-status panels)
@@ -94,6 +95,7 @@ View.__index = View
 ---@field context integer
 ---@field wrap? boolean
 ---@field counter? boolean
+---@field cursorline_tint? boolean
 ---@field deep_diff table
 ---@field keymaps? table
 ---@field staging? differ.view.Staging
@@ -116,6 +118,7 @@ function View.new(model, opts)
         context = opts.context,
         wrap = opts.wrap ~= false, -- default on; only an explicit false disables it
         counter = opts.counter ~= false, -- default on; only an explicit false disables it
+        cursorline_tint = opts.cursorline_tint ~= false, -- default on; explicit false disables
         deep_diff = opts.deep_diff,
         -- the diff surface's resolved action -> lhs map; default to the shared
         -- defaults so a directly-constructed View still binds (merge keeps partials)
@@ -314,9 +317,10 @@ end
 -- CursorLine is low-priority and gets buried by them. mirrors the diff line bg
 -- (a char-level fill with hl_eol so it spans the whole row past EOL) but at a higher
 -- priority so it wins; bg-only, so syntax foreground and word spans still show
--- through. cleared from every column and painted only in the focused one (the cursor
--- lives in one column), so the off-side column shows none. driven by CursorMoved /
--- WinEnter and after each render
+-- through. with cursorline_tint on, the fill takes the row's add/delete shade so the
+-- change kind reads under the cursor instead of a neutral wash. cleared from every
+-- column and painted only in the focused one (the cursor lives in one column), so the
+-- off-side column shows none. driven by CursorMoved / WinEnter and after each render
 function View:_paint_cursorline()
     for _, col in ipairs(self.columns) do
         if col.bufnr and vim.api.nvim_buf_is_valid(col.bufnr) then
@@ -329,10 +333,22 @@ function View:_paint_cursorline()
         return
     end
     local row = vim.api.nvim_win_get_cursor(win)[1] - 1
+    -- tint the cursor line by the row's change kind so the add/remove colour survives
+    -- under the cursor (a neutral overlay would bury it); plain neutral when off
+    local hl = "differCursorLine"
+    if self.cursorline_tint then
+        local line = col.map.lines[row + 1]
+        local kind = line and line.kind
+        if kind == "new" then
+            hl = "differCursorLineAdd"
+        elseif kind == "old" then
+            hl = "differCursorLineDelete"
+        end
+    end
     vim.api.nvim_buf_set_extmark(col.bufnr, cursor_ns, row, 0, {
         end_row = row + 1,
         end_col = 0,
-        hl_group = "differCursorLine",
+        hl_group = hl,
         hl_eol = true, -- fill past EOL so the whole row is covered, like the diff bg
         priority = 160, -- above the add/delete bg (100); word spans (200) show through
     })
