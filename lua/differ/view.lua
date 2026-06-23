@@ -534,6 +534,9 @@ function View:_setup_window(winid, bufnr)
     bind(bufnr, km.scroll_up, function()
         self:quarter_scroll("up")
     end, "differ: scroll up a quarter page")
+    bind(bufnr, km.help, function()
+        self:show_help()
+    end, "differ: keymap help")
     -- stage / unstage the hunk under the cursor, hunk-level here vs file-level
     -- in the panel. bound for the whole worktree-status session; the per-file
     -- direction is checked at call time (the buffer is read-only, so shadowing native
@@ -559,26 +562,28 @@ end
 
 -- step the file panel's selection (and re-source this view) without leaving the diff
 -- window, the in-view counterpart to the panel's own ]f / [f. `wrap` defaults on (for
--- ]f / [f); the staging review flow passes false so s/S/u/U stop at the list ends
+-- ]f / [f); the staging review flow passes false so s/S/u/U stop at the list ends.
+-- returns whether a file/commit was actually opened (false at a no-wrap list end),
+-- which the hunk-nav and review callers use to notify at the change-set boundary
 ---@param direction "next"|"prev"
 ---@param wrap? boolean
+---@return boolean moved
 function View:step_file(direction, wrap)
     local panel = require("differ.panel").current()
     if panel and panel:is_open() then
-        panel:goto_file(direction, true, wrap) -- keep focus in the diff window
-        return
+        return panel:goto_file(direction, true, wrap) -- keep focus in the diff window
     end
     -- file history: one file, so ]f / [f step commits instead
     local history = require("differ.history").current()
     if history and history:is_open() then
-        history:step(direction, true)
-        return
+        return history:step(direction, true)
     end
     -- sidebar hidden but the panel session is live: step from internal selection so
     -- ]f / [f still walk files with no panel window to read the cursor from
     if panel then
-        panel:goto_file(direction, true, wrap)
+        return panel:goto_file(direction, true, wrap)
     end
+    return false
 end
 
 -- scroll a quarter of the window height, cursor following (count-prefixed <C-d>/
@@ -587,6 +592,51 @@ end
 function View:quarter_scroll(direction)
     local n = math.max(1, math.floor(vim.api.nvim_win_get_height(0) / 4))
     vim.api.nvim_feedkeys(n .. (direction == "down" and CTRL_D or CTRL_U), "nx", false)
+end
+
+-- g?: a floating keymap cheatsheet for the diff window, mirroring the panel's.
+-- rows come from the live keymaps (so a configured lhs shows correctly) and list
+-- only the keys actually bound for this source: staging, edit-in-review, and the
+-- session's extra maps (the pr unviewed nav and thread/comment verbs)
+function View:show_help()
+    local km = self.keymaps
+    local function fmt(spec)
+        return type(spec) == "table" and table.concat(spec, " / ") or tostring(spec)
+    end
+    local function pair(a, b)
+        return fmt(a) .. " / " .. fmt(b)
+    end
+    local rows = {
+        { pair(km.next_hunk, km.prev_hunk), "next / previous hunk" },
+        { pair(km.next_file, km.prev_file), "next / previous file" },
+        { pair(km.scroll_down, km.scroll_up), "scroll down / up" },
+        { pair(km.more_context, km.less_context), "more / less context" },
+        { fmt(km.goto_file), "go to the real file" },
+    }
+    if self:_editable_source() then
+        rows[#rows + 1] = { fmt(km.edit_file), "edit the real file (in review)" }
+    end
+    if self.can_stage then
+        rows[#rows + 1] = { pair(km.stage, km.unstage), "stage / unstage hunk" }
+        rows[#rows + 1] = { pair(km.stage_all, km.unstage_all), "stage / unstage all" }
+    end
+    for _, m in ipairs(self.extra_keymaps or {}) do
+        rows[#rows + 1] = { fmt(m.spec), m.desc }
+    end
+    rows[#rows + 1] = { fmt(km.help), "this help" }
+
+    local keyw = 0
+    for _, r in ipairs(rows) do
+        keyw = math.max(keyw, #r[1])
+    end
+    local lines = {}
+    for _, r in ipairs(rows) do
+        lines[#lines + 1] = (" %-" .. keyw .. "s   %s"):format(r[1], r[2])
+    end
+    -- dismiss on the configured help key too, not just the hardcoded g?
+    local dismiss = { "q", "<Esc>" }
+    vim.list_extend(dismiss, type(km.help) == "table" and km.help or { km.help })
+    require("differ.ui.help").show(lines, { title = " Differ: diff ", dismiss = dismiss })
 end
 
 -- the column whose window is currently focused, defaulting to the first. split
@@ -620,13 +670,14 @@ function View:goto_hunk(direction)
     if target then
         vim.api.nvim_win_set_cursor(col.winid or win, { target, 0 })
     elseif direction == "next" then
-        self:step_file("next", false) -- past the last hunk: flow into the next file (no wrap)
-    else
-        local before = self.model.path
-        self:step_file("prev", false) -- before the first hunk: flow into the previous file
-        if self.model.path ~= before then
-            self:_focus_last_hunk() -- land on its last hunk, continuing the backward flow
+        -- past the last hunk: flow into the next file (no wrap), or notify at the last one
+        if not self:step_file("next", false) then
+            vim.notify("differ: no next hunk", vim.log.levels.INFO)
         end
+    elseif self:step_file("prev", false) then
+        self:_focus_last_hunk() -- landed on the previous file: continue the backward flow
+    else
+        vim.notify("differ: no previous hunk", vim.log.levels.INFO)
     end
 end
 
@@ -650,14 +701,20 @@ end
 
 -- move the primary window's cursor to the first unstaged hunk (or first hunk). run
 -- on open and on every file switch so ]f / [f and selecting a file drop you on the
--- first thing to review rather than wherever the cursor happened to be
-function View:_focus_first_hunk()
+-- first thing to review rather than wherever the cursor happened to be. `above` lands
+-- one line up (the context line) so the first change is visible with a line above it,
+-- used on the initial open; file switches land directly on the hunk
+---@param above? boolean
+function View:_focus_first_hunk(above)
     local col = self.columns[1]
     if not (col and col.winid and vim.api.nvim_win_is_valid(col.winid)) then
         return
     end
     local lnum = self:_first_review_line(col)
     if lnum then
+        if above then
+            lnum = math.max(1, lnum - 1)
+        end
         pcall(vim.api.nvim_win_set_cursor, col.winid, { lnum, 0 })
     end
 end
@@ -812,8 +869,8 @@ function View:_advance_review()
     local target = nav.next_hunk(col.map, vim.api.nvim_win_get_cursor(win)[1])
     if target then
         vim.api.nvim_win_set_cursor(win, { target, 0 })
-    else
-        self:step_file("next", false) -- review flow: stop at the last file, don't wrap
+    elseif not self:step_file("next", false) then -- review flow: stop at the last file, don't wrap
+        vim.notify("differ: no more hunks to stage", vim.log.levels.INFO)
     end
 end
 
@@ -841,12 +898,10 @@ function View:_retreat_review()
     local target = nav.prev_hunk(col.map, vim.api.nvim_win_get_cursor(win)[1])
     if target then
         vim.api.nvim_win_set_cursor(win, { target, 0 })
+    elseif self:step_file("prev", false) then -- review flow: stop at the first file, don't wrap
+        self:_focus_last_hunk() -- only when a previous file actually opened
     else
-        local before = self.model.path
-        self:step_file("prev", false) -- review flow: stop at the first file, don't wrap
-        if self.model.path ~= before then -- only when a previous file actually opened
-            self:_focus_last_hunk()
-        end
+        vim.notify("differ: no more hunks to unstage", vim.log.levels.INFO)
     end
 end
 
@@ -875,7 +930,9 @@ end
 -- to do), step to the next file, the file-level echo of s advancing past the last hunk
 function View:stage_all()
     if not self:_toggle_all(true) and self.can_stage and self.staging then
-        self:step_file("next", false) -- stop at the last file, don't wrap
+        if not self:step_file("next", false) then -- stop at the last file, don't wrap
+            vim.notify("differ: no more files to stage", vim.log.levels.INFO)
+        end
     end
 end
 
@@ -883,10 +940,10 @@ end
 -- landing on its last hunk, the file-level echo of u retreating past the first hunk
 function View:unstage_all()
     if not self:_toggle_all(false) and self.can_stage and self.staging then
-        local before = self.model.path
-        self:step_file("prev", false) -- stop at the first file, don't wrap
-        if self.model.path ~= before then -- only when a previous file actually opened
-            self:_focus_last_hunk()
+        if self:step_file("prev", false) then -- stop at the first file, don't wrap
+            self:_focus_last_hunk() -- only when a previous file actually opened
+        else
+            vim.notify("differ: no more files to unstage", vim.log.levels.INFO)
         end
     end
 end
@@ -1068,6 +1125,11 @@ function View:_open_edit_window(abs, target, tcol, anchor_win)
     if target then
         place_cursor(target, tcol)
     end
+    -- bind g? on the real-file buffer too, so the cheatsheet is reachable from the
+    -- edit window (shadows native g?/rot13, inert in this review flow)
+    bind(vim.api.nvim_get_current_buf(), self.keymaps.help, function()
+        self:show_help()
+    end, "differ: keymap help")
 end
 
 -- drop the edit window without losing work: a window holding unsaved edits is left
@@ -1190,7 +1252,7 @@ end
 ---@return differ.View
 function View:open()
     self:_relayout()
-    self:_focus_first_hunk() -- start on the first unstaged hunk, not line 1
+    self:_focus_first_hunk(true) -- start one line above the first hunk so it's visible with context
     self:_paint_cursorline() -- repaint after the cursor moved off line 1
     return self
 end
