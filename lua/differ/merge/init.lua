@@ -63,6 +63,28 @@ local INPUT_HL = {
 ---@type differ.MergeSession|nil
 local session = nil
 
+-- the result-buffer conflict chords (<leader>co/ct/cb/ca, dx) are multi-key, so nvim waits
+-- timeoutlen for the completing key. a short global timeoutlen (which-key setups often run
+-- 200ms) drops them unless typed fast, so widen the window to a generous floor while the
+-- cursor sits in the result buffer and restore the user's value on leave/close. timeoutlen
+-- is global-only (no buffer scope), hence a save/restore rather than set_local; the nil
+-- guard keeps it re-entrant and never lowers an already-larger setting
+local saved_timeoutlen = nil
+
+local function bump_timeout()
+    if saved_timeoutlen == nil then
+        saved_timeoutlen = vim.o.timeoutlen
+        vim.o.timeoutlen = math.max(saved_timeoutlen, 1000)
+    end
+end
+
+local function restore_timeout()
+    if saved_timeoutlen ~= nil then
+        vim.o.timeoutlen = saved_timeoutlen
+        saved_timeoutlen = nil
+    end
+end
+
 ---@param msg string
 ---@param level integer|nil
 local function notify(msg, level)
@@ -494,6 +516,7 @@ function M.close()
     end
     local s = session
     session = nil
+    restore_timeout() -- net in case the tab teardown didn't fire BufLeave on the result buf
     -- drop the diagnostics hook; the producers re-lint the now-resolved file on their own
     if s.diag_aug then
         pcall(vim.api.nvim_del_augroup_by_id, s.diag_aug)
@@ -672,6 +695,18 @@ local function lay_out(root, relpath, model, layout)
         buffer = result_buf,
         group = aug,
         callback = on_cursor_moved,
+    })
+    -- widen the mapping timeout while focused in the result buffer so the multi-key
+    -- conflict chords land at any pace, not just under a short global timeoutlen
+    vim.api.nvim_create_autocmd("BufEnter", {
+        buffer = result_buf,
+        group = aug,
+        callback = bump_timeout,
+    })
+    vim.api.nvim_create_autocmd("BufLeave", {
+        buffer = result_buf,
+        group = aug,
+        callback = restore_timeout,
     })
     -- a hand-edit shifts the marker lines: re-parse + repaint so the regions, colour, and
     -- nav stay aligned to the live buffer (not just on splice/:w). InsertLeave covers a run

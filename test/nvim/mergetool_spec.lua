@@ -173,6 +173,30 @@ describe(":Differ mergetool", function()
         merge.close()
         assert.is_nil(merge.current())
     end)
+
+    it("widens a short timeoutlen in the result buffer and restores it on close", function()
+        local root = conflict_repo()
+        local saved = vim.o.timeoutlen
+        vim.o.timeoutlen = 200 -- a short which-key-style window the chords can't land in
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({}) -- lands in the result buffer, firing the bump
+        assert.is_true(vim.o.timeoutlen >= 1000)
+        merge.close()
+        assert.are.equal(200, vim.o.timeoutlen)
+        vim.o.timeoutlen = saved
+    end)
+
+    it("never lowers an already-generous timeoutlen", function()
+        local root = conflict_repo()
+        local saved = vim.o.timeoutlen
+        vim.o.timeoutlen = 1500
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        assert.are.equal(1500, vim.o.timeoutlen)
+        merge.close()
+        assert.are.equal(1500, vim.o.timeoutlen)
+        vim.o.timeoutlen = saved
+    end)
 end)
 
 -- fire a buffer-local keymap by its description, so the test doesn't depend on <leader>
