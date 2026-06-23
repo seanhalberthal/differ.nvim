@@ -66,7 +66,7 @@ local STATUS_HL = {
 ---@field progress boolean  -- file-position meter in the panel winbar
 ---@field sections differ.panel.Section[]
 ---@field listing "tree"|"name"
----@field collapsed table<string, boolean>
+---@field collapsed table<string, table<string, boolean>>  -- section key -> dir path -> folded
 ---@field on_select fun(entry: differ.FileEntry)
 ---@field on_close fun()|nil
 ---@field on_external_change fun()|nil
@@ -201,6 +201,15 @@ function Panel:focus_file(path)
     return false
 end
 
+-- a stable per-section fold namespace: the title (unique, and survives the index
+-- shuffle when an empty section drops on refresh) or the index when untitled
+---@param i integer
+---@return string
+function Panel:_section_key(i)
+    local sec = self.sections[i]
+    return (sec and sec.title) or ("#" .. i)
+end
+
 -- build a section's tree the way render does: in tree mode, strip the shared dir
 -- prefix when it's 2+ levels deep (that's where indentation hurts, and a single
 -- shared dir is worth keeping as a foldable row), shown once as a header subtitle.
@@ -228,7 +237,7 @@ function Panel:render()
     -- independent of which dirs are folded, so the section counts + winbar meter
     -- stay accurate when collapsed (entry -> 1-based index)
     local abs_of, total = {}, 0
-    for _, sec in ipairs(self.sections) do
+    for bi, sec in ipairs(self.sections) do
         local root, strip = self:_section_root(sec)
         for _, row in ipairs(tree.rows(root, "tree", {})) do -- fully expanded
             if row.kind == "file" then
@@ -240,7 +249,10 @@ function Panel:render()
             title = sec.title,
             prefix = strip ~= "" and strip or nil,
             count = #sec.entries,
-            rows = tree.rows(root, self.listing, self.collapsed),
+            -- fold state is namespaced per section: the same dir path can list under
+            -- two sections at once (e.g. an untracked src/ and an unstaged src/), so a
+            -- shared key would collapse both rows from one toggle
+            rows = tree.rows(root, self.listing, self.collapsed[self:_section_key(bi)]),
         }
     end
     self.file_total = total
@@ -394,14 +406,36 @@ function Panel:set_sections(sections)
     self:render()
 end
 
--- toggle the fold state of a directory path and repaint, keeping the cursor put
+-- the line of the dir row for `path` in `section`, or nil when it isn't rendered
+---@param section integer
 ---@param path string
-function Panel:toggle_fold(path)
-    self.collapsed[path] = not self.collapsed[path]
+---@return integer|nil
+function Panel:_dir_line(section, path)
+    for i, m in ipairs(self.meta) do
+        if m.kind == "dir" and m.section == section and m.path == path then
+            return i
+        end
+    end
+    return nil
+end
+
+-- toggle the fold state of a section's directory and repaint, anchoring the cursor
+-- to the toggled dir row (its line number shifts when folds above it change height)
+---@param section integer
+---@param path string
+function Panel:toggle_fold(section, path)
+    local key = self:_section_key(section)
+    local sub = self.collapsed[key]
+    if not sub then
+        sub = {}
+        self.collapsed[key] = sub
+    end
+    sub[path] = not sub[path]
     local lnum = self.winid and vim.api.nvim_win_get_cursor(self.winid)[1] or 1
     self:render()
     if self.winid and vim.api.nvim_win_is_valid(self.winid) then
-        vim.api.nvim_win_set_cursor(self.winid, { math.min(lnum, math.max(#self.lines, 1)), 0 })
+        local row = self:_dir_line(section, path) or math.min(lnum, math.max(#self.lines, 1))
+        vim.api.nvim_win_set_cursor(self.winid, { row, 0 })
     end
 end
 
@@ -434,14 +468,18 @@ function Panel:close_node()
     if not m then
         return
     end
-    if m.kind == "dir" and not self.collapsed[m.path] then
-        self:toggle_fold(m.path)
-        return
+    if m.kind == "dir" then
+        local folded = (self.collapsed[self:_section_key(m.section)] or {})[m.path]
+        if not folded then
+            self:toggle_fold(m.section, m.path)
+            return
+        end
     end
     local parent = self:_parent_dir_line(lnum)
     if parent then
+        local pm = self.meta[parent]
         vim.api.nvim_win_set_cursor(self.winid, { parent, 0 })
-        self:toggle_fold(self.meta[parent].path)
+        self:toggle_fold(pm.section, pm.path)
     end
 end
 
@@ -450,10 +488,12 @@ end
 ---@param collapsed boolean
 function Panel:set_all_folds(collapsed)
     if collapsed then
-        for _, sec in ipairs(self.sections) do
+        for bi, sec in ipairs(self.sections) do
+            local sub = {}
             for _, path in ipairs(tree.dir_paths((self:_section_root(sec)))) do
-                self.collapsed[path] = true
+                sub[path] = true
             end
+            self.collapsed[self:_section_key(bi)] = sub
         end
     else
         self.collapsed = {}
@@ -518,7 +558,7 @@ function Panel:select(keep_focus)
         return
     end
     if m.kind == "dir" then
-        self:toggle_fold(m.path)
+        self:toggle_fold(m.section, m.path)
     elseif m.kind == "file" then
         self.selected_row = lnum
         self:_open(m.entry, keep_focus)
