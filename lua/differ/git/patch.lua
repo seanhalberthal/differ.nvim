@@ -22,30 +22,38 @@ end
 -- one hunk as a unified diff against `path`. `old_text`/`new_text` are the full
 -- file sides, read only to detect an unterminated end of file. assumes a plain
 -- modification (same path both sides); renames/adds/deletes stage file-level.
--- `offset` shifts both hunk starts by the net line delta of the staged hunks
--- before this one: the frozen view's line numbers are from open time, but
+-- `offset` shifts the located side's start by the net line delta of the staged
+-- hunks before this one: the frozen view's line numbers are from open time, but
 -- git applies against the live index, so a preceding staged insert/delete moves
--- this hunk's position. both starts shift equally, so the body stays valid for a
--- forward (stage) apply (checks `-` lines) and a reverse (unstage) apply (`+` lines)
+-- this hunk's position. under `--unidiff-zero` git relocates a single zero-context
+-- hunk by content and only reads one side's start (`-` for a forward stage, `+`
+-- for a reverse unstage), so only that side carries the offset; the other side
+-- keeps its frozen, always-non-negative line number. shifting both would let a
+-- net-negative offset (earlier deletions) drive the unused side below zero, and
+-- git rejects a negative `@@` number as `corrupt patch at line 4` before it ever
+-- tries to apply
 ---@param path string
 ---@param hunk differ.Hunk
 ---@param old_text string
 ---@param new_text string
 ---@param offset integer|nil
+---@param reverse boolean|nil  -- true for an unstage apply (shifts new_start, not old_start)
 ---@return string
-function M.hunk(path, hunk, old_text, new_text, offset)
+function M.hunk(path, hunk, old_text, new_text, offset, reverse)
     offset = offset or 0
     local old_n, new_n = #to_lines(old_text), #to_lines(new_text)
     local old_eof, new_eof = unterminated(old_text), unterminated(new_text)
+    local old_shift = reverse and 0 or offset
+    local new_shift = reverse and offset or 0
 
     local out = {
         ("diff --git a/%s b/%s"):format(path, path),
         "--- a/" .. path,
         "+++ b/" .. path,
         ("@@ -%d,%d +%d,%d @@"):format(
-            hunk.old_start + offset,
+            hunk.old_start + old_shift,
             hunk.old_count,
-            hunk.new_start + offset,
+            hunk.new_start + new_shift,
             hunk.new_count
         ),
     }

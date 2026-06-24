@@ -690,7 +690,14 @@ function M.panel(opts)
             return {
                 initial = entry.staged and "staged" or "unstaged",
                 apply = function(model, hunk, offset, reverse)
-                    local p = patch.hunk(model.path, hunk, model.old_text, model.new_text, offset)
+                    local p = patch.hunk(
+                        model.path,
+                        hunk,
+                        model.old_text,
+                        model.new_text,
+                        offset,
+                        reverse
+                    )
                     local ok, err = M.apply_patch(root, p, reverse)
                     if not ok then
                         local op = reverse and "unstage" or "stage"
