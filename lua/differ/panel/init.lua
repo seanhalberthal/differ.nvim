@@ -757,6 +757,25 @@ function Panel:_edge_file_row(edge)
     return visitable or fallback
 end
 
+-- move the cursor to the first unstaged file row, skipping the Staged section so
+-- :Differ lands on the first thing left to review, falling back to the first
+-- visitable file when everything is staged. mirrors the per-file _first_review_line,
+-- which already prefers an unstaged hunk. pure renames are skipped as in
+-- focus_first_changed; for sources without staging (rev-pair, pr) entries carry no
+-- staged flag, so this degenerates to the first file
+function Panel:focus_first_unstaged()
+    local i = self:_file_row(0, "next", false)
+    while i do
+        local e = self.meta[i].entry
+        if not e.staged and not is_blank_rename(e) then
+            pcall(vim.api.nvim_win_set_cursor, self.winid, { i, 0 })
+            return
+        end
+        i = self:_file_row(i, "next", false)
+    end
+    self:focus_first_changed()
+end
+
 -- [[ / ]]: jump straight to the first/last content-bearing file row and open it,
 -- skipping pure renames (blank diffs). `keep_focus` is threaded to `_open` so
 -- in-view jumping stays in the diff window

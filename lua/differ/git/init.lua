@@ -886,11 +886,11 @@ function M.panel(opts)
     panel.return_tab = return_tab
     if opts.open_first then
         -- land on the file (and line) :Differ was run from when it's in the change
-        -- set, else the first file with real content (skipping pure renames, which
-        -- diff to a blank view); leave the cursor in the diff, not the panel
+        -- set, else the first unstaged file (skipping the Staged section, and pure
+        -- renames which diff to a blank view); leave the cursor in the diff, not the panel
         local on_origin = origin_rel and panel:focus_file(origin_rel)
         if not on_origin then
-            panel:focus_first_changed()
+            panel:focus_first_unstaged()
         end
         panel:select(true)
         if on_origin and view then

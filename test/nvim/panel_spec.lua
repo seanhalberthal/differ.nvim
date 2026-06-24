@@ -143,6 +143,37 @@ describe("panel navigation", function()
         p:close()
     end)
 
+    it("focus_first_unstaged lands on the first unstaged file, skipping Staged", function()
+        local function se(path, staged)
+            return { path = path, status = "M", additions = 1, deletions = 0, staged = staged }
+        end
+        local p, picked = panel({}, {
+            sections = {
+                { title = "Staged", entries = { se("a.lua", true) } },
+                { title = "Unstaged", entries = { se("b.lua", false) } },
+            },
+        })
+        p:open()
+        p:focus_first_unstaged()
+        p:select(true)
+        assert.are.equal("b.lua", picked[#picked].path)
+        p:close()
+    end)
+
+    it("focus_first_unstaged falls back to the first file when all are staged", function()
+        local function se(path)
+            return { path = path, status = "M", additions = 1, deletions = 0, staged = true }
+        end
+        local p, picked = panel({}, {
+            sections = { { title = "Staged", entries = { se("a.lua"), se("b.lua") } } },
+        })
+        p:open()
+        p:focus_first_unstaged()
+        p:select(true)
+        assert.are.equal("a.lua", picked[#picked].path)
+        p:close()
+    end)
+
     it("]] / [[ are inert in a single-section panel", function()
         local p, picked = panel({ fe("a.lua", "M", 1, 0), fe("b.lua", "M", 1, 0) })
         p:open()
