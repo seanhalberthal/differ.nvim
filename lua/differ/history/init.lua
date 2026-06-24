@@ -51,6 +51,7 @@ local current = nil
 ---@field on_select fun(commit: differ.git.Commit)|nil   -- file mode
 ---@field expand fun(commit: differ.git.Commit): differ.FileEntry[]|nil -- range mode
 ---@field on_file fun(commit: differ.git.Commit, entry: differ.FileEntry)|nil -- range mode
+---@field commit_message fun(commit: differ.git.Commit): string|nil -- full message for the details float
 ---@field on_close fun()|nil
 ---@field path string              -- file path (file mode) or range (range mode), for the header
 ---@field keymaps table<string, string|string[]|false>
@@ -69,6 +70,7 @@ History.__index = History
 ---@field on_select? fun(commit: differ.git.Commit)
 ---@field expand? fun(commit: differ.git.Commit): differ.FileEntry[]
 ---@field on_file? fun(commit: differ.git.Commit, entry: differ.FileEntry)
+---@field commit_message? fun(commit: differ.git.Commit): string -- full message for the details float
 ---@field on_close? fun()
 ---@field path string
 ---@field keymaps? table<string, string|string[]|false> -- resolved history action -> lhs
@@ -102,6 +104,7 @@ function History.new(opts)
         on_select = opts.on_select,
         expand = opts.expand,
         on_file = opts.on_file,
+        commit_message = opts.commit_message,
         on_close = opts.on_close,
         path = opts.path,
         keymaps = vim.tbl_extend(
@@ -118,12 +121,9 @@ function History.new(opts)
     }, History)
 end
 
--- 1-based buffer line of commit `i` in file mode (rows are contiguous from line 3)
----@param i integer
----@return integer
-local function commit_line(i)
-    return HEADER_LINES + i
-end
+-- continuation-line indent (two-line mode): line 2 sits this far past the sha so it
+-- reads as a wrapped child of line 1
+local CONT_INDENT = 2
 
 -- truncate to `w` bytes, marking the cut with an ellipsis
 ---@param s string
@@ -203,6 +203,67 @@ local function build_commit(cells, w)
     return table.concat(parts), spans
 end
 
+-- two-line mode (narrow left/right panels): line 1 is the metadata
+-- "<sha> <date>  +N -M  <author>", with the fixed-width sha/date/+N-M cells aligning
+-- down the panel and the author trailing. the subject gets the whole continuation
+-- line to itself. nothing is truncated: an overrun just clips at the window edge (no
+-- ellipsis), and the full message is a keypress away in the details float
+---@param cells differ.history.CommitCell
+---@param w { sha: integer, date: integer }
+---@return string body, { [1]: integer, [2]: integer, [3]: string }[] spans
+local function build_meta_line(cells, w)
+    local parts, spans, col = {}, {}, 0
+    local function emit(text)
+        parts[#parts + 1] = text
+        col = col + #text
+    end
+    local function cell(text, width, hl)
+        local start = col
+        emit(text)
+        spans[#spans + 1] = { start, col, hl }
+        if #text < width then
+            emit(string.rep(" ", width - #text))
+        end
+        emit("  ")
+    end
+    cell(cells.sha, w.sha, "differPanelDir")
+    cell(cells.date, w.date, "differPanelHelp")
+    local astart = col
+    emit("+" .. cells.add)
+    spans[#spans + 1] = { astart, col, "differPanelCountAdd" }
+    emit(" ")
+    local dstart = col
+    emit("-" .. cells.del)
+    spans[#spans + 1] = { dstart, col, "differPanelCountDelete" }
+    emit("  ")
+    local rstart = col
+    emit(cells.author)
+    spans[#spans + 1] = { rstart, col, "differHistoryAuthor" }
+    return table.concat(parts), spans
+end
+
+-- two-line mode: the continuation line "<indent><subject> [refs]". the subject owns
+-- the line; it isn't truncated, so a long subject just clips at the window edge
+---@param cells differ.history.CommitCell
+---@param indent integer
+---@return string body, { [1]: integer, [2]: integer, [3]: string }[] spans
+local function build_cont_line(cells, indent)
+    local parts, spans, col = {}, {}, 0
+    local function emit(text)
+        parts[#parts + 1] = text
+        col = col + #text
+    end
+    emit(string.rep(" ", indent))
+    emit(cells.subject) -- subject, default colour
+    if cells.refs then
+        emit("  ")
+        local rstart = col
+        emit(cells.refs)
+        spans[#spans + 1] = { rstart, col, "differHistoryRef" }
+    end
+    return table.concat(parts), spans
+end
+
 -- assemble a nested file row (range mode): "<status> <path>  +N -M"
 ---@param entry differ.FileEntry
 ---@return string body, { [1]: integer, [2]: integer, [3]: string }[] spans
@@ -251,8 +312,9 @@ function History:_files(ci)
 end
 
 -- repaint the buffer and rebuild the line meta: a two-line header then one row per
--- commit (sha · date · +N/-M · author · subject), with range mode adding fold
--- arrows, optional ref tags, and the expanded commits' files indented beneath
+-- commit (sha · date · +N/-M · author · subject). top/bottom panels fit the row on
+-- one line; narrow left/right panels split it across two (grid line + author/subject).
+-- range mode adds fold arrows, optional ref tags, and the expanded commits' files beneath
 function History:render()
     local cells, w = {}, { sha = 0, date = 0, count = 0, author = 0 }
     for _, c in ipairs(self.commits) do
@@ -272,33 +334,56 @@ function History:render()
         w.author = math.max(w.author, #cell.author)
     end
 
+    -- vertical (left/right) panels are too narrow for the full row, so each commit
+    -- spans two lines: the fixed-width sha/date/+N-M grid + author, then the subject
+    -- beneath. top/bottom keep the single line. nothing truncates; an overrun clips
+    -- at the window edge
+    local two_line = self.position == "left" or self.position == "right"
+
     local lines, meta, spans_by_line = { self.path, "Help: g?" }, { false, false }, {}
     local function push(line, m, spans)
         lines[#lines + 1] = line
         meta[#meta + 1] = m
         spans_by_line[#lines] = spans
     end
-    for ci, cell in ipairs(cells) do
-        if self.mode == "range" then
-            local body, spans = build_commit(cell, w)
-            local prefix = (self:_is_expanded(ci) and "▾" or "▸") .. " "
-            shift(spans, #prefix)
-            table.insert(spans, 1, { 0, #prefix - 1, "differPanelHelp" }) -- the fold arrow
-            push(prefix .. body, { kind = "commit", ci = ci }, spans)
-            if self:_is_expanded(ci) then
-                for fi, entry in ipairs(self:_files(ci)) do
-                    local fbody, fspans = build_file(entry)
-                    shift(fspans, 4)
-                    push(
-                        "    " .. fbody,
-                        { kind = "file", ci = ci, fi = fi, entry = entry },
-                        fspans
-                    )
-                end
+    -- render one commit's row(s): a single line, or the two-line variant. range mode
+    -- prepends the fold arrow to the first line; the continuation indents past it. both
+    -- physical lines carry the same commit meta, so the cursor selects from either
+    ---@param ci integer
+    ---@param cell differ.history.CommitCell
+    local function push_commit(ci, cell)
+        local arrow = self.mode == "range" and ((self:_is_expanded(ci) and "▾" or "▸") .. " ")
+            or ""
+        local m = { kind = "commit", ci = ci }
+        if two_line then
+            local l1, s1 = build_meta_line(cell, w)
+            if arrow ~= "" then
+                shift(s1, #arrow)
+                table.insert(s1, 1, { 0, #arrow - 1, "differPanelHelp" })
             end
+            push(arrow .. l1, m, s1)
+            -- the fold arrow is one display cell + a space, but multibyte; indent the
+            -- continuation by display width (not byte length) so it aligns under the sha
+            local arrow_cols = arrow == "" and 0 or 2
+            local l2, s2 = build_cont_line(cell, arrow_cols + CONT_INDENT)
+            push(l2, m, s2)
         else
             local body, spans = build_commit(cell, w)
-            push(body, { kind = "commit", ci = ci }, spans)
+            if arrow ~= "" then
+                shift(spans, #arrow)
+                table.insert(spans, 1, { 0, #arrow - 1, "differPanelHelp" }) -- the fold arrow
+            end
+            push(arrow .. body, m, spans)
+        end
+    end
+    for ci, cell in ipairs(cells) do
+        push_commit(ci, cell)
+        if self.mode == "range" and self:_is_expanded(ci) then
+            for fi, entry in ipairs(self:_files(ci)) do
+                local fbody, fspans = build_file(entry)
+                shift(fspans, 4)
+                push("    " .. fbody, { kind = "file", ci = ci, fi = fi, entry = entry }, fspans)
+            end
         end
     end
     self.lines, self.meta = lines, meta
@@ -466,7 +551,7 @@ function History:step(direction, keep_focus)
         if i < 1 or i > #self.commits then
             return false
         end
-        self:_move_cursor(commit_line(i))
+        self:_move_cursor(self:_commit_line(i))
         self:_open(i, keep_focus)
         return true
     end
@@ -523,9 +608,33 @@ function History:show_help()
     vim.list_extend(lines, {
         " ]c / [c    next / previous hunk",
         " f / b      scroll diff down / up",
+        " K          commit details",
         " g?         this help",
     })
     require("differ.ui.help").show(lines, { title = " Differ: history " })
+end
+
+-- K: float the full commit message (subject + body) plus author/date for the commit
+-- under the cursor, so a subject the narrow list clipped is still fully readable.
+-- dismissed with q / <Esc>
+function History:show_details()
+    local m = self:_cursor_meta()
+    if not m then
+        return
+    end
+    local c = self.commits[m.ci]
+    local lines = {
+        (" %s  %s  %s"):format(c.short, c.author, date_util.format(c.epoch, { relative = false })),
+    }
+    if c.refs and c.refs ~= "" then
+        lines[#lines + 1] = " " .. c.refs
+    end
+    lines[#lines + 1] = ""
+    local msg = (self.commit_message and self.commit_message(c)) or c.subject
+    for _, l in ipairs(vim.split(msg, "\n", { plain = true })) do
+        lines[#lines + 1] = " " .. l
+    end
+    require("differ.ui.help").show(lines, { title = " Differ: commit " })
 end
 
 -- window appearance + buffer-local keymaps
@@ -568,6 +677,9 @@ function History:_setup_window()
     map(km.prev_hunk, function()
         require("differ").goto_hunk("prev")
     end, "previous hunk")
+    map(km.details, function()
+        self:show_details()
+    end, "commit details")
     map(km.help, function()
         self:show_help()
     end, "help")
@@ -609,7 +721,7 @@ function History:open(keep_focus)
         self:_open_file(1, 1, keep_focus ~= false)
     else
         self:render()
-        self:_move_cursor(commit_line(1))
+        self:_move_cursor(self:_commit_line(1))
         self:_open(1, keep_focus ~= false)
     end
     return self

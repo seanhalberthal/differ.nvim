@@ -697,8 +697,10 @@ function View:_focused_column()
     return self.columns[1]
 end
 
--- move the cursor to the next/prev hunk in the focused column. no-op (silent) at
--- the first/last hunk, matching vim diff-mode motions
+-- move the cursor to the next/prev hunk in the focused column. at a change-set
+-- boundary it flows into the adjacent file (no wrap); a log/history session is the
+-- exception: hunk nav stays within the current commit's diff (commits step via ]f/[f),
+-- so it stops at the first/last hunk rather than crossing into the next commit
 ---@param direction "next"|"prev"
 function View:goto_hunk(direction)
     local col = self:_focused_column()
@@ -713,13 +715,18 @@ function View:goto_hunk(direction)
         target = nav.prev_hunk(col.map, lnum)
     end
     if target then
-        vim.api.nvim_win_set_cursor(col.winid or win, { target, 0 })
-    elseif direction == "next" then
+        return vim.api.nvim_win_set_cursor(col.winid or win, { target, 0 })
+    end
+    -- at a boundary. in a log/history session the change set is a single commit, so
+    -- don't flow into the adjacent commit (that's ]f/[f); just stop with a notice
+    local history = require("differ.history").current()
+    local in_history = history ~= nil and history:is_open()
+    if direction == "next" then
         -- past the last hunk: flow into the next file (no wrap), or notify at the last one
-        if not self:step_file("next", false) then
+        if in_history or not self:step_file("next", false) then
             vim.notify("differ: no next hunk", vim.log.levels.INFO)
         end
-    elseif self:step_file("prev", false) then
+    elseif not in_history and self:step_file("prev", false) then
         self:_focus_last_hunk() -- landed on the previous file: continue the backward flow
     else
         vim.notify("differ: no previous hunk", vim.log.levels.INFO)

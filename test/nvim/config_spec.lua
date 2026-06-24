@@ -3,7 +3,7 @@
 local config = require("differ.config")
 
 describe("config.resolve history", function()
-    it("defaults the history sidebar to a wide-and-short bottom edge", function()
+    it("defaults the history sidebar to the bottom strip (the wide commit row fits)", function()
         local cfg = config.resolve(nil)
         assert.are.equal("bottom", cfg.history.position)
         assert.are.equal(10, cfg.history.height)

@@ -63,9 +63,10 @@ M.defaults = {
         listing = "tree",
         progress = true, -- "file K/N" position meter in the panel winbar
     },
-    -- the log/history sidebar's default placement and size. a commit list is
-    -- wide-and-short, so it defaults to the bottom edge (unlike the file panel's
-    -- right); `:Differ panel <pos>` repositions a live one
+    -- the log/history sidebar's default placement and size. a commit row is wide
+    -- (sha · date · author · subject), so it defaults to the bottom strip where the
+    -- whole row fits on one line; left/right are supported but render two lines per
+    -- commit. `:Differ panel <pos>` repositions a live one
     history = {
         position = "bottom",
         height = 10, -- top/bottom
@@ -102,6 +103,7 @@ M.defaults = {
         scroll_down = "f", -- all three (shadows native f/b; set false to restore)
         scroll_up = "b",
         select = { "<CR>", "o" }, -- panel, history
+        details = "K", -- history: float the full commit message (subject + body)
         help = "g?", -- panel, history
         toggle_listing = "i", -- panel: toggle tree / name
         close_node = "c", -- panel: collapse the dir under the cursor (or its parent)

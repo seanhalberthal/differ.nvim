@@ -107,6 +107,7 @@ describe(":Differ log (single-file history)", function()
     end)
 
     it("renders each row with sha, date, diffstat, author and subject", function()
+        -- the default bottom strip is wide, so the whole row fits on one line
         local root = repo_with_history()
         vim.cmd.edit(root .. "/a.lua")
         git_src.history({})
@@ -117,6 +118,55 @@ describe(":Differ log (single-file history)", function()
         assert.is_truthy(row:find("+1 -1", 1, true)) -- this commit's diffstat
         assert.is_truthy(row:find("t", 1, true)) -- author
         assert.is_truthy(row:find("v3: bump to 3", 1, true)) -- subject
+        h:close()
+    end)
+
+    it("splits each commit across two lines on a narrow left/right panel", function()
+        -- a vertical panel is too narrow for the full row: the metadata grid sits on
+        -- line 1, the subject on the continuation line (untruncated, clipped by the win)
+        local root = repo_with_history()
+        vim.cmd.edit(root .. "/a.lua")
+        git_src.history({ position = "right" })
+        local h = History.current()
+        local meta = h.lines[3] -- metadata line (after the 2-line header)
+        assert.is_truthy(meta:find(h.commits[1].short, 1, true)) -- short sha
+        assert.is_truthy(meta:find("+1 -1", 1, true)) -- this commit's diffstat
+        assert.is_falsy(meta:find("v3: bump to 3", 1, true)) -- subject is NOT on line 1
+        assert.is_truthy(h.lines[4]:find("v3: bump to 3", 1, true)) -- subject on line 2
+        h:close()
+    end)
+
+    it("floats the full commit message (subject + body) on demand", function()
+        local root = repo_with_history()
+        -- give the newest commit a body so the float has more than the subject
+        write(root .. "/a.lua", "local x = 4\nreturn x\n")
+        git(root, "commit", "-q", "-am", "v4: subject line\n\na body paragraph explaining why")
+        vim.cmd.edit(root .. "/a.lua")
+        git_src.history({})
+        local h = History.current()
+        h:_move_cursor(h:_commit_line(1)) -- cursor on the newest commit
+        h:show_details()
+        -- the details float is the current window; its buffer holds subject + body
+        local buf = vim.api.nvim_win_get_buf(0)
+        local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+        assert.is_truthy(text:find("v4: subject line", 1, true))
+        assert.is_truthy(text:find("a body paragraph explaining why", 1, true))
+        vim.api.nvim_win_close(0, true)
+        h:close()
+    end)
+
+    it("keeps ]c / [c within the commit (no crossing into the adjacent commit)", function()
+        local root = repo_with_history()
+        vim.cmd.edit(root .. "/a.lua")
+        git_src.history({})
+        local h = History.current()
+        local v = view_in_origin(h)
+        -- the newest commit's diff is a single hunk; stepping past it must NOT flow into
+        -- the next/previous commit (that's ]f/[f) — the selected commit stays put
+        v:goto_hunk("next")
+        assert.are.equal(1, h.index)
+        v:goto_hunk("prev")
+        assert.are.equal(1, h.index)
         h:close()
     end)
 

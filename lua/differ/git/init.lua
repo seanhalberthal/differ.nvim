@@ -274,6 +274,16 @@ function M.model(source, root, file, head)
     })
 end
 
+-- the full commit message (subject + body) for `sha`, for the history details
+-- float. read on demand (a keypress), so a synchronous local git call is fine
+---@param root string
+---@param sha string
+---@return string
+function M.commit_message(root, sha)
+    local out = git({ "show", "-s", "--format=%B", sha }, root)
+    return out and chomp(out) or ""
+end
+
 -- the current branch name (for the buffer statusline), or nil on a detached HEAD
 ---@param root string
 ---@return string|nil
@@ -973,6 +983,9 @@ function M.history(opts)
         position = opts.position or hist_cfg.position,
         height = hist_cfg.height,
         width = hist_cfg.width,
+        commit_message = function(commit)
+            return M.commit_message(root, commit.sha)
+        end,
         on_select = function(commit)
             local model = model_for(commit)
             if view and view:is_open() then
@@ -1042,6 +1055,9 @@ function M.range_history(opts)
         position = opts.position or hist_cfg.position,
         height = hist_cfg.height,
         width = hist_cfg.width,
+        commit_message = function(commit)
+            return M.commit_message(root, commit.sha)
+        end,
         expand = function(commit)
             return M.commit_files(root, commit.sha)
         end,
