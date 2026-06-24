@@ -7,6 +7,11 @@
 ---@field listing "tree"|"name"
 ---@field progress boolean  -- file-position meter in the panel winbar
 
+---@class differ.Config.History
+---@field position "bottom"|"top"|"left"|"right"
+---@field height integer  -- used for top/bottom
+---@field width integer   -- used for left/right
+
 ---@class differ.Config
 ---@field layout differ.Layout
 ---@field context integer
@@ -16,6 +21,7 @@
 ---@field deep_diff { enabled: boolean, granularity: "word"|"char", similarity_threshold: number }
 ---@field comments { inline: boolean, collapsed: boolean }
 ---@field panel differ.Config.Panel
+---@field history differ.Config.History
 ---@field keymaps table<string, string|string[]|false|table>
 ---@field relative_dates boolean
 ---@field base string|nil
@@ -56,6 +62,14 @@ M.defaults = {
         width = 35, -- left/right
         listing = "tree",
         progress = true, -- "file K/N" position meter in the panel winbar
+    },
+    -- the log/history sidebar's default placement and size. a commit list is
+    -- wide-and-short, so it defaults to the bottom edge (unlike the file panel's
+    -- right); `:Differ panel <pos>` repositions a live one
+    history = {
+        position = "bottom",
+        height = 10, -- top/bottom
+        width = 40, -- left/right
     },
     -- buffer-local maps, one flat table of action -> lhs shared across the diff,
     -- panel and history surfaces (each binds the actions it implements). a value is

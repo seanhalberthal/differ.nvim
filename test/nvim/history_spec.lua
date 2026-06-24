@@ -273,3 +273,85 @@ describe(":Differ log (single-file history)", function()
         assert.is_false(v:is_open())
     end)
 end)
+
+-- the history panel window's position relative to the origin window it split from
+local function geom(h)
+    local prow, pcol = unpack(vim.api.nvim_win_get_position(h.winid))
+    local orow, ocol = unpack(vim.api.nvim_win_get_position(h.origin_win))
+    return { prow = prow, pcol = pcol, orow = orow, ocol = ocol }
+end
+
+-- per position: which fixed-size flag the split carries, and which edge the panel
+-- sits on (left/right compare columns, top/bottom compare rows against the origin)
+local PLACEMENT = {
+    left = {
+        axis = "winfixwidth",
+        cmp = function(g)
+            return g.pcol < g.ocol
+        end,
+    },
+    right = {
+        axis = "winfixwidth",
+        cmp = function(g)
+            return g.pcol > g.ocol
+        end,
+    },
+    top = {
+        axis = "winfixheight",
+        cmp = function(g)
+            return g.prow < g.orow
+        end,
+    },
+    bottom = {
+        axis = "winfixheight",
+        cmp = function(g)
+            return g.prow > g.orow
+        end,
+    },
+}
+
+describe("history runtime position", function()
+    for _, pos in ipairs({ "left", "right", "top", "bottom" }) do
+        it("opens on the " .. pos .. " edge via cfg.history.position", function()
+            local root = repo_with_history()
+            require("differ").setup({ history = { position = pos } })
+            vim.cmd.edit(root .. "/a.lua")
+
+            git_src.history({})
+            local h = History.current()
+            assert.are.equal(pos, h.position)
+            local spec = PLACEMENT[pos]
+            assert.is_true(vim.wo[h.winid][spec.axis])
+            assert.is_true(spec.cmp(geom(h)), "wrong edge for " .. pos)
+            h:close()
+            require("differ").setup({}) -- restore defaults for the rest of the suite
+        end)
+    end
+
+    it("re-positions live through every edge, keeping one panel + buffer", function()
+        local root = repo_with_history()
+        vim.cmd.edit(root .. "/a.lua")
+        git_src.history({})
+        local h = History.current()
+        local buf, win = h.bufnr, h.winid
+        for _, pos in ipairs({ "left", "top", "right", "bottom" }) do
+            h:set_position(pos)
+            local spec = PLACEMENT[pos]
+            assert.is_true(h:is_open(), pos)
+            assert.are.equal(buf, h.bufnr) -- same buffer, just re-windowed
+            assert.is_false(win == h.winid) -- new window each move
+            assert.is_true(vim.wo[h.winid][spec.axis])
+            assert.is_true(spec.cmp(geom(h)), "wrong edge for " .. pos)
+            win = h.winid
+        end
+        h:close()
+    end)
+
+    it("set_position is a safe no-op when the panel isn't open", function()
+        local h = History.new({ commits = {}, path = "x", on_select = function() end })
+        assert.is_false(h:is_open())
+        h:set_position("left")
+        assert.are.equal("left", h.position) -- still recorded
+        assert.is_false(h:is_open()) -- no window opened, no throw
+    end)
+end)

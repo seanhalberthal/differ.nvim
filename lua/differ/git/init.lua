@@ -963,13 +963,16 @@ function M.history(opts)
     local view ---@type differ.View|nil -- the single diff view the panel drives
     local opened_origin = false -- the first commit shown holds the origin line, then stop
     local cfg = require("differ").get_config()
+    local hist_cfg = cfg.history or {}
     local return_tab, session_tab = open_session_tab()
     local history = History.new({
         commits = commits,
         path = vim.fn.fnamemodify(file, ":~"),
         keymaps = cfg.keymaps.history,
         relative_dates = cfg.relative_dates,
-        position = opts.position,
+        position = opts.position or hist_cfg.position,
+        height = hist_cfg.height,
+        width = hist_cfg.width,
         on_select = function(commit)
             local model = model_for(commit)
             if view and view:is_open() then
@@ -1028,6 +1031,7 @@ function M.range_history(opts)
 
     local view ---@type differ.View|nil -- the single diff view the panel drives
     local cfg = require("differ").get_config()
+    local hist_cfg = cfg.history or {}
     local return_tab, session_tab = open_session_tab()
     local history = History.new({
         commits = commits,
@@ -1035,7 +1039,9 @@ function M.range_history(opts)
         path = range, -- the header shows the range in place of a file path
         keymaps = cfg.keymaps.history,
         relative_dates = cfg.relative_dates,
-        position = opts.position,
+        position = opts.position or hist_cfg.position,
+        height = hist_cfg.height,
+        width = hist_cfg.width,
         expand = function(commit)
             return M.commit_files(root, commit.sha)
         end,

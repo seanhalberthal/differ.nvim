@@ -56,6 +56,8 @@ local current = nil
 ---@field keymaps table<string, string|string[]|false>
 ---@field relative_dates boolean
 ---@field position string
+---@field height integer
+---@field width integer
 ---@field lines string[]
 ---@field meta (differ.history.Meta|false)[]
 local History = {}
@@ -72,6 +74,8 @@ History.__index = History
 ---@field keymaps? table<string, string|string[]|false> -- resolved history action -> lhs
 ---@field relative_dates? boolean
 ---@field position? "bottom"|"top"|"left"|"right"
+---@field height? integer
+---@field width? integer
 
 -- build a history panel (buffer only; the window is created on :open, so it's
 -- headless-constructible for tests)
@@ -107,6 +111,8 @@ function History.new(opts)
         ),
         relative_dates = opts.relative_dates or false,
         position = opts.position or "bottom",
+        height = opts.height or 10,
+        width = opts.width or 40,
         lines = {},
         meta = {},
     }, History)
@@ -576,13 +582,13 @@ end
 -- create the split in the configured position, bind the buffer, set window opts
 function History:_open_window()
     if self.position == "top" then
-        vim.cmd("topleft 10split")
+        vim.cmd(("topleft %dsplit"):format(self.height))
     elseif self.position == "left" then
-        vim.cmd("topleft 40vsplit")
+        vim.cmd(("topleft %dvsplit"):format(self.width))
     elseif self.position == "right" then
-        vim.cmd("botright 40vsplit")
+        vim.cmd(("botright %dvsplit"):format(self.width))
     else -- bottom (default)
-        vim.cmd("botright 10split")
+        vim.cmd(("botright %dsplit"):format(self.height))
     end
     self.winid = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(self.winid, self.bufnr)
@@ -614,13 +620,18 @@ function History:is_open()
     return self.winid ~= nil and vim.api.nvim_win_is_valid(self.winid)
 end
 
--- close the panel window, wipe its buffer, and tear down the driven view via
--- on_close. ends the history session
-function History:close()
+-- close the panel window but keep the buffer + state (for repositioning)
+function History:_close_window()
     if self:is_open() then
         pcall(vim.api.nvim_win_close, self.winid, true)
     end
     self.winid = nil
+end
+
+-- close the panel window, wipe its buffer, and tear down the driven view via
+-- on_close. ends the history session
+function History:close()
+    self:_close_window()
     if vim.api.nvim_buf_is_valid(self.bufnr) then
         vim.api.nvim_buf_delete(self.bufnr, { force = true })
     end
@@ -630,6 +641,26 @@ function History:close()
     if self.on_close then
         self.on_close()
     end
+end
+
+-- move the history panel to a new edge live, preserving the buffer, commit/fold
+-- state, the driven view, and the main (origin) window. mirrors Panel:set_position
+---@param position "bottom"|"top"|"left"|"right"
+function History:set_position(position)
+    self.position = position
+    if not self:is_open() then
+        return
+    end
+    local lnum = vim.api.nvim_win_get_cursor(self.winid)[1]
+    local origin = self.origin_win
+    self:_close_window()
+    if origin and vim.api.nvim_win_is_valid(origin) then
+        vim.api.nvim_set_current_win(origin)
+    end
+    self:_open_window()
+    self.origin_win = origin
+    self:render()
+    self:_move_cursor(lnum)
 end
 
 -- flip absolute <-> relative dates live, keeping the cursor put (runtime control;
