@@ -4,6 +4,13 @@
 
 local M = {}
 
+-- nvim-web-devicons doubles as the "user has a nerd font" signal (the panel keys its
+-- file icons off the same presence). cached once: the winbar re-evals on every redraw
+local has_nerd = pcall(require, "nvim-web-devicons")
+-- the hunk-counter marker: a git "diff" glyph (nf-oct-diff) when a nerd font is
+-- available, else a plain diamond that renders everywhere
+local HUNK_MARK = has_nerd and vim.fn.nr2char(0xf440) or "◆"
+
 -- escape statusline-special percent signs in interpolated text (a path can hold one)
 ---@param s string
 ---@return string
@@ -28,8 +35,9 @@ local function hunk_at(map, lnum)
     return k
 end
 
--- diff-window winbar: "<file>  ◆ hunk K/N", file on the left, the hunk count
--- right-aligned. empty when the drawn window isn't a differ diff
+-- diff-window winbar: "<file>  <mark> hunk K/N", file on the left, the hunk count
+-- right-aligned (the marker is a nerd git-diff glyph, else a plain diamond). empty
+-- when the drawn window isn't a differ diff
 ---@return string
 function M.diff()
     local win = vim.g.statusline_winid
@@ -59,9 +67,10 @@ function M.diff()
     -- while reviewing (not just in the compose window)
     local draft = require("differ.pr").review_status(buf)
     local badge = draft and ("%#differReviewDraft#● " .. draft .. "%*   ") or ""
-    return (" %s %%=%s◆ hunk %d/%d "):format(
+    return (" %s %%=%s%s hunk %d/%d "):format(
         esc(vim.fn.fnamemodify(view.model.path, ":t")),
         badge,
+        HUNK_MARK,
         k,
         total
     )
