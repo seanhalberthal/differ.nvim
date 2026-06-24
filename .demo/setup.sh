@@ -9,11 +9,16 @@
 #   .demo/fixture/        normal repo: two tracked files with history + uncommitted
 #                         edits (multi-file diff, the s/s staging flow, and log)
 #   .demo/fixture-merge/  repo left mid-merge with an unresolved conflict (mergetool)
+#   .demo/fixture-pr/     repo with a faked github `origin` remote, so the PR frontend
+#                         resolves acme/widgets and talks to the fixture sidecar (no net)
+# and builds the demo-only fixture sidecar (.demo/fake-sidecar) the PR scene points at.
 set -euo pipefail
 
 demo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="$(cd "$demo_dir/.." && pwd)"
 fixture="$demo_dir/fixture"
 merge="$demo_dir/fixture-merge"
+pr="$demo_dir/fixture-pr"
 
 # isolated git: our own identity, no signing, no global hooks/templates leaking in
 git_init() {
@@ -215,6 +220,49 @@ commit "$merge" "main: nord theme, tighter context" 2024-02-05
 GIT_AUTHOR_DATE="2024-02-06T09:00:00" GIT_COMMITTER_DATE="2024-02-06T09:00:00" \
 	git -C "$merge" merge feature -m "merge feature" >/dev/null 2>&1 || true
 
+# ── fixture-pr/ : a repo whose github remote the PR frontend resolves ─────────
+# the PR diff content comes entirely from the fixture sidecar; this repo exists only
+# so the frontend is "inside a git repo" and parse_remote(origin) yields acme/widgets.
+# the remote is never contacted, so the url need not exist.
+git_init "$pr"
+mkdir -p "$pr/lua"
+cat >"$pr/lua/theme.lua" <<'LUA'
+local M = {}
+
+M.theme = "dracula"
+M.context = 20
+M.accent = "#bd93f9"
+
+function M.setup()
+  M.theme = M.theme or "dracula"
+  return M.theme
+end
+
+return M
+LUA
+cat >"$pr/lua/palette.lua" <<'LUA'
+local M = {}
+
+M.colours = {
+  red = "#ff5555",
+  green = "#50fa7b",
+  purple = "#bd93f9",
+}
+
+return M
+LUA
+commit "$pr" "feat: add dracula theme" 2024-02-04
+git -C "$pr" branch -q -m feat/dracula-theme
+git -C "$pr" remote add origin "git@github.com:acme/widgets.git"
+
+# ── fixture sidecar : the demo-only fake the PR scene talks to ────────────────
+# built into .demo/fake-sidecar/; .demo/init.lua points sidecar_bin at it. a dot-dir
+# package in the main module, so it imports internal/* yet stays out of ./... tooling.
+echo "building fixture sidecar"
+(cd "$root" && go build -o "$demo_dir/fake-sidecar/fake-sidecar" ./.demo/fake-sidecar)
+
 echo "fixtures built:"
 echo "  $fixture"
 echo "  $merge"
+echo "  $pr  (origin -> acme/widgets)"
+echo "  $demo_dir/fake-sidecar/fake-sidecar"

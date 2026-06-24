@@ -7,15 +7,19 @@
 # Run from the repo root:
 #   make demo                # equivalent to: bash .demo/setup.sh && vhs .demo/demo.tape
 #
-# Local surfaces only — no network, no gh, fully reproducible. Drives the README's
-# <leader>d* launchers (leader is Space); a keycast HUD (bottom-right, from init.lua)
-# shows the keys as they're pressed. Covers the multi-file diff, the s/s staging flow
-# across files, panel repositioning, file-level staging, file history, layout toggle,
-# and the 3-way merge tool.
+# No network, no gh, no token, fully reproducible — the PR scene talks to the demo-only
+# fixture sidecar (.demo/fake-sidecar, built by setup.sh), not GitHub. Drives the README's
+# <leader>d*/<leader>p* launchers (leader is Space); a keycast HUD (bottom-right, from
+# init.lua) shows the keys as they're pressed. Covers the multi-file diff, the s/s staging
+# flow across files, panel repositioning, file-level staging, file history, layout toggle,
+# the 3-way merge tool, and the GitHub PR review flow (list, overview, draft review,
+# reply to a third user's thread, resolve, comment, approve).
 #
 # NOTE: focus/nav steps assume the panel is on the RIGHT (Ctrl+W h -> diff, Ctrl+W l
-# -> panel) and that `[f` lands back on palette.lua. Watch one pass and nudge the
-# sleeps; if the keycast HUD covers anything, move its anchor in .demo/init.lua.
+# -> panel) and that `[f` lands back on palette.lua. The PR scene assumes review entry
+# focuses the diff so `]t`/`gc`/`gp`/`gr`/`ga` land there (add a `Ctrl+W h` before `]t`
+# if not). Watch one pass and nudge the sleeps; if the keycast HUD covers anything, move
+# its anchor in .demo/init.lua.
 
 Output .demo/demo.gif
 Output .demo/demo.mp4
@@ -106,15 +110,9 @@ Sleep 1.2s
 Space
 Type "dh"
 Sleep 2.6s
-Type "]c"
-Sleep 1.1s
-Type "]c"
-Sleep 1.3s
 # Step to the previous commit and read its change.
 Type "]f"
-Sleep 900ms
-Type "]c"
-Sleep 2.6s
+Sleep 3s
 
 # Back to the shell.
 Type ":qa!"
@@ -135,7 +133,6 @@ Enter
 Sleep 2s
 
 # The merge tool: ours / theirs across the top, the real result file full-width below.
-# No launcher for this one, so it's typed — the command line narrates it.
 Space
 Type "do"
 Enter
@@ -159,6 +156,83 @@ Sleep 2s
 Type ":w"
 Enter
 Sleep 1.8s
+
+Type ":qa!"
+Enter
+Sleep 800ms
+
+# ── GitHub PR review over the fixture sidecar (offline) ──────────
+# The PR frontend talks to .demo/fake-sidecar, not GitHub: no network, no gh, no token.
+# fixture-pr's `origin` resolves to acme/widgets, and the sidecar serves a canned PR #42
+# ("add dracula theme") that already carries a review thread from a third user (octocat).
+Hide
+Type "cd ../fixture-pr"
+Enter
+Type "clear"
+Enter
+Show
+Sleep 600ms
+
+Type "nvim -u ../init.lua lua/theme.lua"
+Enter
+Sleep 2s
+
+# List the open PRs (from the sidecar) and pick #42 — lands on the overview: title,
+# body, green CI checks, and the conversation timeline (octocat's note + review).
+Space
+Type "pl"
+Sleep 1.8s
+Type "1"
+Sleep 3.2s
+
+# Start a review (Space pr): the file panel + diff build into the session tab, and new
+# comments compose as drafts until the review is submitted.
+Space
+Type "pr"
+Sleep 2.8s
+
+# The panel lists files alphabetically, so the review lands on palette.lua; step to
+# theme.lua (]f), where octocat's thread lives, then jump to it (]t). the cursor peek
+# expands the thread inline — threads collapse when the cursor leaves to keep the file
+# scannable, so the cursor stays on the line through the reply.
+Type "]f"
+Sleep 1.6s
+Type "]t"
+Sleep 2.8s
+
+# Reply to it — the compose split opens in insert mode; Ctrl+S submits. the cursor stays
+# on the line, so the peek now shows both comments inline: octocat's and the reply.
+Type "gp"
+Sleep 1s
+Type "good call, pulling it from the palette now"
+Sleep 800ms
+Ctrl+S
+Sleep 3.4s
+
+# Resolve the thread now that it's addressed.
+Type "gr"
+Sleep 2.2s
+
+# Add a fresh comment of our own: step to a changed line and comment on it.
+Type "]c"
+Sleep 1s
+Type "ga"
+Sleep 1s
+Type "dracula's a good default, let's ship it"
+Sleep 800ms
+Ctrl+S
+Sleep 2.4s
+
+# Submit the review as Approve (Space pm; the event picker: 2 = APPROVE), with a summary.
+Space
+Type "pm"
+Sleep 1.4s
+Type "2"
+Sleep 1.2s
+Type "nice work, the palette refactor reads cleanly"
+Sleep 800ms
+Ctrl+S
+Sleep 2.6s
 
 Type ":qa!"
 Enter
