@@ -779,11 +779,12 @@ function View:cursor_new_line()
 end
 
 -- position the new side near `new_lnum` (where the cursor was, or the line just
--- edited) across an in-place re-source. with `exact` (a re-source holding the precise
--- line), when that line maps to a rendered *changed* line, land on it and centre it so
--- an edit deep in a hunk shows the edit, not the hunk's top. otherwise (or an
--- unchanged/context line) fall back to the nearest hunk's start, landing on the change
--- you were by (this is what open-on-origin wants)
+-- edited) across an in-place re-source. with `exact` (open-on-origin, or a re-source
+-- holding the precise line), when that line maps to a rendered *changed* line, land on
+-- it and centre it so an edit deep in a hunk shows the edit, not the hunk's top. a
+-- cursor parked on an unchanged/context line (e.g. opening from the top of the file)
+-- falls back to the nearest hunk's start, landing on the change you were by, not on the
+-- leading context (this is what open-on-origin wants)
 ---@param new_lnum integer
 ---@param exact? boolean
 function View:focus_new_line(new_lnum, exact)
@@ -791,7 +792,8 @@ function View:focus_new_line(new_lnum, exact)
     if not (col and col.winid and vim.api.nvim_win_is_valid(col.winid)) then
         return
     end
-    -- the line maps straight to a rendered changed line (e.g. the line just edited)
+    -- the line maps straight to a rendered changed line (the line just edited, or the
+    -- origin line :Differ was run from); hold it exactly rather than snapping to the hunk
     local at = col.map.from_new[new_lnum]
     if exact and at and col.map.lines[at] and col.map.lines[at].hunk then
         pcall(vim.api.nvim_win_set_cursor, col.winid, { at, 0 })

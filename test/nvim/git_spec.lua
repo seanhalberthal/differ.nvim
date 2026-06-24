@@ -1045,11 +1045,13 @@ describe(":Differ diff hunk staging", function()
         local p = Panel.current()
         local v = view_in_origin(p)
         assert.are.equal("a.lua", v.model.path)
-        assert.are.equal(1, vim.api.nvim_win_get_cursor(p.origin_win)[1]) -- on hunk 1
+        -- opened from new-file line 1 (the "1" -> "1x" change), so it lands on that
+        -- line's new-side row (row 2, under the deleted old "1"), not the hunk's top
+        assert.are.equal(2, vim.api.nvim_win_get_cursor(p.origin_win)[1]) -- on hunk 1
 
         v:stage_hunk() -- stage hunk 1; cursor stays put, marked
         assert.is_true(v.staged_hunks[1])
-        assert.are.equal(1, vim.api.nvim_win_get_cursor(p.origin_win)[1])
+        assert.are.equal(2, vim.api.nvim_win_get_cursor(p.origin_win)[1])
 
         v:stage_hunk() -- second s: advance to hunk 2 (buffer line 9)
         assert.are.equal(9, vim.api.nvim_win_get_cursor(p.origin_win)[1])

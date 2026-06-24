@@ -464,6 +464,23 @@ describe("view re-source", function()
         assert.is_true(cur > col.map.from_new[2]) -- below the top of the new block
         v:close()
     end)
+
+    it("snaps an unchanged origin line to the nearest hunk, not the context row", function()
+        -- the change is at lines 2-4 (B,C,D); line 5 ("e") is an unchanged context line
+        local old, new = "a\nb\nc\nd\ne\n", "a\nB\nC\nD\ne\n"
+        local v = View.new(model(old, new), {
+            layout = "stacked",
+            context = math.huge,
+            deep_diff = { enabled = true },
+        })
+        v:open()
+        local col = v.columns[1]
+        v:focus_new_line(5, true) -- parked on the "e" context line below the hunk
+        local cur = vim.api.nvim_win_get_cursor(col.winid)[1]
+        assert.is_not_nil(col.map.lines[cur].hunk) -- landed on the hunk, not the context row
+        assert.are_not.equal(col.map.from_new[5], cur)
+        v:close()
+    end)
 end)
 
 describe("view jump-to-file", function()

@@ -887,7 +887,10 @@ function M.panel(opts)
         end
         panel:select(true)
         if on_origin and view then
-            view:focus_new_line(origin_line)
+            -- hold the exact origin line when it's a changed line, so opening deep in a
+            -- hunk stays put rather than snapping to the hunk's top; a cursor on
+            -- unchanged context still falls back to the nearest hunk to review
+            view:focus_new_line(origin_line, true)
         end
     end
     return panel
@@ -909,6 +912,11 @@ function M.history(opts)
         return nil
     end
 
+    -- the cursor line :Differ log was invoked from, to open the first commit's diff at
+    -- that line when history is for the file we're sitting in (resolved below)
+    local origin_line = vim.api.nvim_win_get_cursor(0)[1]
+    local origin_buf = vim.fn.resolve(vim.api.nvim_buf_get_name(0))
+
     local file = opts.path and vim.fn.fnamemodify(opts.path, ":p") or vim.api.nvim_buf_get_name(0)
     if file == "" or vim.fn.filereadable(file) == 0 then
         return notify("no file to show history for", vim.log.levels.WARN)
@@ -921,6 +929,10 @@ function M.history(opts)
         return notify("not inside a git repository", vim.log.levels.WARN)
     end
     local relpath = file:sub(#root + 2) -- strip "<root>/"; file is under root
+
+    -- carry the cursor line into the first commit's diff only when history targets the
+    -- file we're in; a `:Differ log <other>` has no meaningful origin line
+    local origin = (origin_buf ~= "" and origin_buf == file) and origin_line or nil
 
     local commits = M.log_commits(root, { path = relpath })
     if #commits == 0 then
@@ -942,6 +954,7 @@ function M.history(opts)
     end
 
     local view ---@type differ.View|nil -- the single diff view the panel drives
+    local opened_origin = false -- the first commit shown holds the origin line, then stop
     local cfg = require("differ").get_config()
     local return_tab, session_tab = open_session_tab()
     local history = History.new({
@@ -956,6 +969,13 @@ function M.history(opts)
                 view:set_source(model)
             else
                 view = require("differ").diff_model(model)
+            end
+            -- on the first commit shown, hold the origin line: a line changed by that
+            -- commit lands exactly, otherwise it falls back to the first hunk. later
+            -- commit steps land on the first hunk like before
+            if origin and not opened_origin then
+                opened_origin = true
+                view:focus_new_line(origin, true)
             end
         end,
         on_close = function()

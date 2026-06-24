@@ -42,6 +42,20 @@ local function repo_with_history()
     return root
 end
 
+-- a repo whose newest commit changes two well-separated lines (2 and 9), so the
+-- origin-line landing is distinguishable from the first hunk
+local function repo_two_hunks()
+    local root = vim.fn.tempname()
+    vim.fn.mkdir(root, "p")
+    git(root, "init", "-q")
+    write(root .. "/a.lua", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")
+    git(root, "add", "a.lua")
+    git(root, "commit", "-q", "-m", "seed")
+    write(root .. "/a.lua", "1\n2x\n3\n4\n5\n6\n7\n8\n9x\n10\n")
+    git(root, "commit", "-q", "-am", "two edits")
+    return root
+end
+
 -- the History panel returns focus to the diff by default, so the View lives in the
 -- origin window (View.current keys off the focused buffer)
 local function view_in_origin(h)
@@ -119,6 +133,58 @@ describe(":Differ log (single-file history)", function()
         assert.is_truthy(h.lines[3]:find("%d%d%d%d%-%d%d%-%d%d")) -- back to absolute
         h:close()
         require("differ").setup({}) -- restore defaults for the rest of the suite
+    end)
+
+    it("opens the newest commit's diff at the origin line, not the first hunk", function()
+        local root = repo_two_hunks()
+        vim.cmd.edit(root .. "/a.lua")
+        vim.api.nvim_win_set_cursor(0, { 9, 0 }) -- park on the lower change
+
+        git_src.history({})
+        local h = History.current()
+        local v = view_in_origin(h)
+        local col = v.columns[1]
+        local cur = vim.api.nvim_win_get_cursor(h.origin_win)[1]
+        assert.are.equal(col.map.from_new[9], cur) -- held line 9's row, not the line-2 hunk
+        assert.is_not_nil(col.map.lines[cur].hunk) -- and it's a real changed line
+        h:close()
+    end)
+
+    it(
+        "holds the origin line only on the first commit; later steps land on the first hunk",
+        function()
+            local root = repo_two_hunks()
+            vim.cmd.edit(root .. "/a.lua")
+            vim.api.nvim_win_set_cursor(0, { 9, 0 })
+
+            git_src.history({})
+            local h = History.current()
+            h:step("next") -- step to an older commit
+            local v = view_in_origin(h)
+            local col = v.columns[1]
+            local cur = vim.api.nvim_win_get_cursor(h.origin_win)[1]
+            assert.are.equal(v:_first_review_line(col), cur) -- first hunk, origin not re-applied
+            h:close()
+        end
+    )
+
+    it("ignores the origin line for `:Differ log <other-file>`", function()
+        local root = repo_two_hunks()
+        write(root .. "/b.lua", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")
+        git(root, "add", "b.lua")
+        git(root, "commit", "-q", "-m", "add b")
+        write(root .. "/b.lua", "1\n2\n3\n4\n5\n6\n7\n8\n9x\n10\n")
+        git(root, "commit", "-q", "-am", "edit b line 9")
+        vim.cmd.edit(root .. "/a.lua") -- sitting in a.lua, cursor at line 1
+        vim.api.nvim_win_set_cursor(0, { 9, 0 })
+
+        git_src.history({ path = root .. "/b.lua" }) -- history for a different file
+        local h = History.current()
+        local v = view_in_origin(h)
+        local col = v.columns[1]
+        local cur = vim.api.nvim_win_get_cursor(h.origin_win)[1]
+        assert.are.equal(v:_first_review_line(col), cur) -- first hunk, origin ignored
+        h:close()
     end)
 
     it("steps to an older commit and re-sources the same view in place", function()
