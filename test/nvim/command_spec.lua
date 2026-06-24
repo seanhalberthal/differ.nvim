@@ -18,6 +18,30 @@ local function open_panel()
     return p
 end
 
+local function git(cwd, ...)
+    local args =
+        { "git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "init.defaultBranch=main" }
+    vim.list_extend(args, { ... })
+    local res = vim.system(args, { cwd = cwd, text = true }):wait()
+    assert(
+        res.code == 0,
+        "git failed: " .. table.concat({ ... }, " ") .. "\n" .. (res.stderr or "")
+    )
+end
+
+-- a one-commit repo, opened so git.history has something to list
+local function repo_with_history()
+    local root = vim.fn.tempname()
+    vim.fn.mkdir(root, "p")
+    git(root, "init", "-q")
+    local fd = assert(io.open(root .. "/a.lua", "wb"))
+    fd:write("local x = 1\n")
+    fd:close()
+    git(root, "add", "a.lua")
+    git(root, "commit", "-q", "-m", "seed")
+    return root
+end
+
 describe("command completion", function()
     it("offers subcommands at position 1", function()
         local out = command.complete("", "Differ ")
@@ -167,16 +191,59 @@ describe("command panel position", function()
 
     it("treats a non-position arg as a rev spec, not a position", function()
         local p = open_panel()
-        local git = require("differ.git")
-        local saved = git.panel
+        local git_mod = require("differ.git")
+        local saved = git_mod.panel
         local got
-        git.panel = function(opts)
+        git_mod.panel = function(opts)
             got = opts
         end
         command.panel("lfet") -- a typo'd position is just a rev spec; panel stays put
-        git.panel = saved
+        git_mod.panel = saved
         assert.are.equal("bottom", p.position) -- unchanged
         assert.are.equal("lfet", got.rev)
         p:close()
+    end)
+
+    it("repositions a live history session, not a second panel", function()
+        vim.cmd("silent! only")
+        local root = repo_with_history()
+        vim.cmd.edit(root .. "/a.lua")
+        local git_mod = require("differ.git")
+        git_mod.history({})
+        local h = require("differ.history").current()
+        assert.is_not_nil(h)
+
+        local saved = git_mod.panel
+        local git_called = false
+        git_mod.panel = function()
+            git_called = true
+        end
+        command.panel("right")
+        git_mod.panel = saved
+
+        assert.are.equal("right", h.position) -- the live history sidebar moved in place
+        assert.is_false(git_called) -- no second, overlapping session spawned
+        h:close()
+    end)
+
+    it("bare panel over a live history is a no-op, not a second session", function()
+        vim.cmd("silent! only")
+        local root = repo_with_history()
+        vim.cmd.edit(root .. "/a.lua")
+        local git_mod = require("differ.git")
+        git_mod.history({})
+        local h = require("differ.history").current()
+
+        local saved = git_mod.panel
+        local git_called = false
+        git_mod.panel = function()
+            git_called = true
+        end
+        command.panel("") -- bare, no position word: nothing to toggle
+        git_mod.panel = saved
+
+        assert.is_false(git_called) -- no worktree-diff session opened over the history
+        assert.is_not_nil(require("differ.history").current()) -- same live session
+        h:close()
     end)
 end)

@@ -68,9 +68,10 @@ describe("patch.hunk", function()
         )
     end)
 
-    it("shifts both hunk starts by the staged-hunk offset", function()
+    it("shifts the located side by the staged-hunk offset (forward stage)", function()
         -- a hunk at old/new line 5, with two extra lines already staged before it,
-        -- applies at index line 7
+        -- applies at index line 7. forward apply locates by the `-` side, so old_start
+        -- shifts to 7 and new_start stays frozen at 5
         local h = {
             old_start = 5,
             old_count = 1,
@@ -80,7 +81,54 @@ describe("patch.hunk", function()
             new_lines = { "E" },
         }
         local p = patch.hunk("f", h, "a\nb\nc\nd\ne\n", "a\nb\nc\nd\nE\n", 2)
-        assert.is_truthy(p:find("@@ -7,1 +7,1 @@", 1, true))
+        assert.is_truthy(p:find("@@ -7,1 +5,1 @@", 1, true))
+    end)
+
+    it("never emits a negative line number when a deletion offset underflows", function()
+        -- an earlier staged hunk deleted 6 lines (net offset -6); a later hunk sits at
+        -- worktree line 3. shifting both starts would drive new_start to -3 and produce
+        -- `@@ -3,1 +-3,1 @@`, which git rejects as a corrupt patch at line 4
+        local h = {
+            old_start = 9,
+            old_count = 1,
+            new_start = 3,
+            new_count = 1,
+            old_lines = { "i" },
+            new_lines = { "I" },
+        }
+        local p = patch.hunk("f", h, "", "", -6)
+        local header = p:match("@@[^\n]*@@")
+        assert.is_nil(header:find("%-%-"), "negative old_start in header: " .. header)
+        assert.is_nil(header:find("%+%-"), "negative new_start in header: " .. header)
+    end)
+
+    it("forward stage shifts only old_start, leaving new_start frozen", function()
+        -- forward apply locates by the `-` side, so only old_start carries the offset;
+        -- new_start (worktree coords) stays put and so can never go negative
+        local h = {
+            old_start = 9,
+            old_count = 1,
+            new_start = 3,
+            new_count = 1,
+            old_lines = { "i" },
+            new_lines = { "I" },
+        }
+        local p = patch.hunk("f", h, "", "", -6, false)
+        assert.is_truthy(p:find("@@ -3,1 +3,1 @@", 1, true), p)
+    end)
+
+    it("reverse unstage shifts only new_start, leaving old_start frozen", function()
+        -- reverse apply locates by the `+` side, so only new_start carries the offset
+        local h = {
+            old_start = 3,
+            old_count = 1,
+            new_start = 9,
+            new_count = 1,
+            old_lines = { "i" },
+            new_lines = { "I" },
+        }
+        local p = patch.hunk("f", h, "", "", -6, true)
+        assert.is_truthy(p:find("@@ -3,1 +3,1 @@", 1, true), p)
     end)
 
     it("omits the marker when the hunk does not reach an unterminated EOF", function()

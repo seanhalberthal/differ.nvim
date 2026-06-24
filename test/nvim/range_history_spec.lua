@@ -179,7 +179,8 @@ describe(":Differ log <range> (branch-range history)", function()
         vim.cmd.edit(root .. "/a.lua")
         git_src.range_history({ range = "main..HEAD" })
         local h = History.current()
-        -- the tip (c4) carries the feature/HEAD decoration; it should show in its row
+        -- the tip (c4) carries the feature/HEAD decoration; on the default bottom strip
+        -- the row is one line, so the refs trail the subject on that row
         assert.is_truthy(h.commits[1].refs:find("feature", 1, true))
         assert.is_truthy(h.lines[3]:find("feature", 1, true))
         h:close()

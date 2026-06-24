@@ -55,12 +55,18 @@ local PANEL_POSITIONS = { left = true, right = true, top = true, bottom = true }
 -- :Differ panel [left|right|top|bottom|revspec], open the file panel over a
 -- change set and show the first file's diff (the diff window is the session anchor,
 -- so there's never a panel without one). on a live session it hides/shows the sidebar
--- in place; `:Differ close` ends the session. a position word repositions a live panel,
--- reveals a hidden sidebar there, or opens one at that edge when no session exists
--- (height/width carry over from config); any other arg is a rev spec
+-- in place; `:Differ close` ends the session. a position word repositions a live panel
+-- or history sidebar, reveals a hidden sidebar there, or opens one at that edge when no
+-- session exists (height/width carry over from config); any other arg is a rev spec
 ---@param arg string|nil
 function M.panel(arg)
     if arg and PANEL_POSITIONS[arg] then
+        -- a live history (`:Differ log`) session has no file panel; reposition its
+        -- sidebar in place rather than spawning a second, overlapping session
+        local history = require("differ.history").current()
+        if history then
+            return history:set_position(arg)
+        end
         local panel = require("differ.panel").current()
         if panel then
             panel:set_position(arg) -- records position; repositions live if shown
@@ -70,6 +76,15 @@ function M.panel(arg)
             return
         end
         return require("differ.git").panel({ position = arg, open_first = true })
+    end
+    -- a bare `:Differ panel` (no position word) over a live history session has
+    -- nothing to toggle (the history sidebar has no hide/show); say so rather than
+    -- opening a second worktree-diff session on top of it
+    if not (arg and arg ~= "") and require("differ.history").current() then
+        return notify(
+            "history sidebar can't be toggled; use :Differ panel left|right to move it, "
+                .. "or :Differ close to end it"
+        )
     end
     require("differ.git").panel({ rev = (arg ~= "" and arg) or nil, open_first = true })
 end

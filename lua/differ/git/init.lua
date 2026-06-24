@@ -274,6 +274,16 @@ function M.model(source, root, file, head)
     })
 end
 
+-- the full commit message (subject + body) for `sha`, for the history details
+-- float. read on demand (a keypress), so a synchronous local git call is fine
+---@param root string
+---@param sha string
+---@return string
+function M.commit_message(root, sha)
+    local out = git({ "show", "-s", "--format=%B", sha }, root)
+    return out and chomp(out) or ""
+end
+
 -- the current branch name (for the buffer statusline), or nil on a detached HEAD
 ---@param root string
 ---@return string|nil
@@ -690,7 +700,14 @@ function M.panel(opts)
             return {
                 initial = entry.staged and "staged" or "unstaged",
                 apply = function(model, hunk, offset, reverse)
-                    local p = patch.hunk(model.path, hunk, model.old_text, model.new_text, offset)
+                    local p = patch.hunk(
+                        model.path,
+                        hunk,
+                        model.old_text,
+                        model.new_text,
+                        offset,
+                        reverse
+                    )
                     local ok, err = M.apply_patch(root, p, reverse)
                     if not ok then
                         local op = reverse and "unstage" or "stage"
@@ -879,11 +896,11 @@ function M.panel(opts)
     panel.return_tab = return_tab
     if opts.open_first then
         -- land on the file (and line) :Differ was run from when it's in the change
-        -- set, else the first file with real content (skipping pure renames, which
-        -- diff to a blank view); leave the cursor in the diff, not the panel
+        -- set, else the first unstaged file (skipping the Staged section, and pure
+        -- renames which diff to a blank view); leave the cursor in the diff, not the panel
         local on_origin = origin_rel and panel:focus_file(origin_rel)
         if not on_origin then
-            panel:focus_first_changed()
+            panel:focus_first_unstaged()
         end
         panel:select(true)
         if on_origin and view then
@@ -956,13 +973,19 @@ function M.history(opts)
     local view ---@type differ.View|nil -- the single diff view the panel drives
     local opened_origin = false -- the first commit shown holds the origin line, then stop
     local cfg = require("differ").get_config()
+    local hist_cfg = cfg.history or {}
     local return_tab, session_tab = open_session_tab()
     local history = History.new({
         commits = commits,
         path = vim.fn.fnamemodify(file, ":~"),
         keymaps = cfg.keymaps.history,
         relative_dates = cfg.relative_dates,
-        position = opts.position,
+        position = opts.position or hist_cfg.position,
+        height = hist_cfg.height,
+        width = hist_cfg.width,
+        commit_message = function(commit)
+            return M.commit_message(root, commit.sha)
+        end,
         on_select = function(commit)
             local model = model_for(commit)
             if view and view:is_open() then
@@ -1021,6 +1044,7 @@ function M.range_history(opts)
 
     local view ---@type differ.View|nil -- the single diff view the panel drives
     local cfg = require("differ").get_config()
+    local hist_cfg = cfg.history or {}
     local return_tab, session_tab = open_session_tab()
     local history = History.new({
         commits = commits,
@@ -1028,7 +1052,12 @@ function M.range_history(opts)
         path = range, -- the header shows the range in place of a file path
         keymaps = cfg.keymaps.history,
         relative_dates = cfg.relative_dates,
-        position = opts.position,
+        position = opts.position or hist_cfg.position,
+        height = hist_cfg.height,
+        width = hist_cfg.width,
+        commit_message = function(commit)
+            return M.commit_message(root, commit.sha)
+        end,
         expand = function(commit)
             return M.commit_files(root, commit.sha)
         end,

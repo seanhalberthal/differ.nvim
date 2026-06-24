@@ -8,3 +8,6 @@ docs/overview.md
 # generated demo fixtures (rebuilt by .demo/setup.sh); the gif/mp4 are committed
 /.demo/fixture/
 /.demo/fixture-merge/
+/.demo/fixture-pr/
+# demo-only fake sidecar: source is committed, the built binary is not
+/.demo/fake-sidecar/fake-sidecar

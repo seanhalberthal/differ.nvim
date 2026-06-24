@@ -7,6 +7,11 @@
 ---@field listing "tree"|"name"
 ---@field progress boolean  -- file-position meter in the panel winbar
 
+---@class differ.Config.History
+---@field position "bottom"|"top"|"left"|"right"
+---@field height integer  -- used for top/bottom
+---@field width integer   -- used for left/right
+
 ---@class differ.Config
 ---@field layout differ.Layout
 ---@field context integer
@@ -16,6 +21,7 @@
 ---@field deep_diff { enabled: boolean, granularity: "word"|"char", similarity_threshold: number }
 ---@field comments { inline: boolean, collapsed: boolean }
 ---@field panel differ.Config.Panel
+---@field history differ.Config.History
 ---@field keymaps table<string, string|string[]|false|table>
 ---@field relative_dates boolean
 ---@field base string|nil
@@ -57,6 +63,15 @@ M.defaults = {
         listing = "tree",
         progress = true, -- "file K/N" position meter in the panel winbar
     },
+    -- the log/history sidebar's default placement and size. a commit row is wide
+    -- (sha · date · author · subject), so it defaults to the bottom strip where the
+    -- whole row fits on one line; left/right are supported but render two lines per
+    -- commit. `:Differ panel <pos>` repositions a live one
+    history = {
+        position = "bottom",
+        height = 10, -- top/bottom
+        width = 40, -- left/right
+    },
     -- buffer-local maps, one flat table of action -> lhs shared across the diff,
     -- panel and history surfaces (each binds the actions it implements). a value is
     -- a string, a list of strings (multiple binds), or false to disable. override
@@ -88,6 +103,7 @@ M.defaults = {
         scroll_down = "f", -- all three (shadows native f/b; set false to restore)
         scroll_up = "b",
         select = { "<CR>", "o" }, -- panel, history
+        details = "K", -- history: float the full commit message (subject + body)
         help = "g?", -- panel, history
         toggle_listing = "i", -- panel: toggle tree / name
         close_node = "c", -- panel: collapse the dir under the cursor (or its parent)
