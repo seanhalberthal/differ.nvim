@@ -313,6 +313,25 @@ describe(":Differ mergetool resolution", function()
         vim.cmd("silent write") -- markers still present
         assert.are.same({ "f.txt" }, require("differ.git").conflicted(root))
     end)
+
+    it("refuses to stage when a format-on-save has indented the markers", function()
+        local root = conflict_repo()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+        -- stand in for a format_on_save that ignored disable_autoformat: reflow the region so
+        -- every marker is indented, which the column-0 parser then can't see as a conflict
+        vim.bo[s.result_buf].modifiable = true
+        local lines = vim.api.nvim_buf_get_lines(s.result_buf, 0, -1, false)
+        for i, l in ipairs(lines) do
+            lines[i] = "    " .. l
+        end
+        vim.api.nvim_buf_set_lines(s.result_buf, 0, -1, false, lines)
+        vim.api.nvim_set_current_win(s.result_win)
+        vim.cmd("silent write")
+        -- the parser reads zero regions, but the file is still conflicted: not staged
+        assert.are.same({ "f.txt" }, require("differ.git").conflicted(root))
+    end)
 end)
 
 -- the located input slab line for a side (the row sync_inputs centres on)

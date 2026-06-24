@@ -129,6 +129,18 @@ These re-render the active view only. No refetch, no re-diff, and the state is l
 
 Set `command_alias` in `setup()` to register a shorter name for the same command, e.g. `command_alias = "D"` gives `:D HEAD~1`, `:D log`. Names must start with an uppercase letter (enforced by vim, not by me).
 
+If you lazy-load differ on `cmd = "Differ"`, the alias is only registered once `setup()` runs, so it can't trigger that load itself: the first `:D` of a session, before differ has loaded, errors with `E464` (it prefix-matches the `Differ` load stub). Either add the alias to `cmd` as well, as the spec below does:
+
+```lua
+cmd = { "Differ", "D" },
+```
+
+or skip `command_alias` and use a cmdline abbrev, which expands before the plugin loads so the name lives in one place:
+
+```lua
+vim.cmd [[cnoreabbrev <expr> D (getcmdtype() == ':' && getcmdline() ==# 'D') ? 'Differ' : 'D']]
+```
+
 ### Keymaps
 
 Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()`.
@@ -194,7 +206,7 @@ Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()
 | `q` | Close the merge tool |
 | `g?` | Help |
 
-The result buffer is the real worktree file, so `:w` writes it and stages it once the markers are gone. Because it's a real file, a format-on-save would otherwise run over the conflict markers; the merge tool sets `vim.b.disable_autoformat` (conform's opt-out) for the session, so honour that flag in your `format_on_save` gate if you format on save.
+The result buffer is the real worktree file, so `:w` writes it and stages it once the markers are gone. Because it's a real file, a format-on-save would otherwise run over the conflict markers; the merge tool sets `vim.b.disable_autoformat` (conform's opt-out) for the session, so honour that flag in your `format_on_save` gate if you format on save. If a formatter reformats the markers anyway, differ notices on save, refuses to stage the file, and warns once that the flag isn't being honoured.
 
 ### Launchers (a starting point)
 
@@ -204,7 +216,7 @@ differ ships no global launchers — only the in-view buffer maps above and the 
 {
   "undont/differ.nvim",
   build = "make go-build",
-  cmd = "Differ",
+  cmd = { "Differ", "D" }, -- "D" matches command_alias below; see note above
   keys = {
     -- local diff / history
     { "<leader>do", "<cmd>Differ<CR>",                       desc = "Diff: open (HEAD vs worktree)" },

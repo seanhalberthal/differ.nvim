@@ -60,6 +60,7 @@ local INPUT_HL = {
 ---@field session_tab integer
 ---@field keymaps table                   -- resolved merge keymaps (for the g? cheatsheet)
 ---@field saved_autoformat any            -- the result buffer's prior disable_autoformat, restored on close
+---@field autoformat_warned boolean|nil   -- set once a save is seen to have reformatted the markers
 ---@field diag_aug integer|nil            -- the DiagnosticChanged hook that hushes the result
 
 ---@type differ.MergeSession|nil
@@ -91,6 +92,26 @@ end
 ---@param level integer|nil
 local function notify(msg, level)
     vim.notify("differ: " .. msg, level or vim.log.levels.INFO)
+end
+
+-- a clean conflict marker sits at column 0; a format-on-save that ignores the buffer's
+-- disable_autoformat opt-out reflows the whole region and indents the markers with it. the
+-- parser then can't see the region (it matches at column 0), so it would read as resolved
+-- and stage a file that still has markers. an indented <<<<<<< / >>>>>>> run is the tell;
+-- `<`/`>` only, since a stray indented ======= can be decorative
+---@param lines string[]
+---@return boolean
+local function markers_reformatted(lines)
+    for _, line in ipairs(lines) do
+        local ch = line:match("^%s+([<>])")
+        if ch then
+            local run = line:match("^%s+(%" .. ch .. "+)")
+            if run and #run >= 7 then
+                return true
+            end
+        end
+    end
+    return false
 end
 
 -- the active session, or nil. exposed so :Differ close can route to it
@@ -732,7 +753,21 @@ local function lay_out(root, relpath, model, layout)
                 return
             end
             repaint_result()
-            if #session.regions == 0 then
+            -- a format-on-save that didn't honour disable_autoformat reflows the markers; the
+            -- parser loses the region, so guard the stage on the raw buffer, not the count
+            local reformatted =
+                markers_reformatted(vim.api.nvim_buf_get_lines(session.result_buf, 0, -1, false))
+            if reformatted then
+                if not session.autoformat_warned then
+                    session.autoformat_warned = true
+                    notify(
+                        "conflict markers were reformatted on save and the file was NOT staged. "
+                            .. "your format_on_save isn't honouring vim.b.disable_autoformat, "
+                            .. "which differ sets on this buffer",
+                        vim.log.levels.WARN
+                    )
+                end
+            elseif #session.regions == 0 then
                 require("differ.git").stage(session.root, session.path)
                 notify(session.path .. " resolved and staged")
             else
