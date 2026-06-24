@@ -14,6 +14,9 @@ local bind = require("differ.util.keymap").bind
 local ns = vim.api.nvim_create_namespace("differ")
 local staged_ns = vim.api.nvim_create_namespace("differ.staging")
 local cursor_ns = vim.api.nvim_create_namespace("differ.cursorline")
+-- dimmed deep-diff groups for staged hunks, keyed by rail kind (mirrors ui.paint)
+local STAGED_LINE_HL = { old = "differStagedLineDelete", new = "differStagedLineAdd" }
+local STAGED_WORD_HL = { old = "differStagedWordDelete", new = "differStagedWordAdd" }
 local STATUSCOLUMN_EXPR = '%!v:lua.require("differ.ui.statuscolumn").render()'
 local FOLDTEXT_EXPR = 'v:lua.require("differ.ui.foldtext").render()'
 local CTRL_D = vim.api.nvim_replace_termcodes("<C-d>", true, false, true)
@@ -289,10 +292,12 @@ function View:rerender(opts)
     -- on open / layout toggle), so rerender doesn't, avoiding a double-apply
 end
 
--- overlay the staged-hunk marks: a muted full-line bg over every line of a
--- staged hunk plus the gutter glyph. repainted on every render and on each toggle;
--- buffer content is untouched (the diff stays frozen). a no-op off a staging view,
--- which leaves the gutter at its normal width
+-- overlay the staged-hunk marks: a dimmed deep diff over every line of a staged hunk
+-- plus the gutter glyph. repaints the line in the quieter staged add/delete shade and
+-- its word spans in the staged word shade, above the live diff bg + word spans, so a
+-- staged hunk reads as set-aside yet still shows what changed. repainted on every
+-- render and on each toggle; buffer content is untouched (the diff stays frozen).
+-- a no-op off a staging view, which leaves the gutter at its normal width
 function View:_paint_staged()
     if not self.can_stage then
         return
@@ -302,10 +307,30 @@ function View:_paint_staged()
         local staged_lines = {}
         for i, line in ipairs(col.map.lines) do
             if line.hunk and self.staged_hunks[line.hunk] then
-                vim.api.nvim_buf_set_extmark(col.bufnr, staged_ns, i - 1, 0, {
-                    line_hl_group = "differStagedLine",
-                    priority = 150, -- above the add/delete bg (100), under word spans (200)
+                local row = i - 1
+                -- char-level fill with hl_eol, not line_hl_group: a line_hl_group covers
+                -- the text but loses the past-EOL tail to the diff bg's own hl_eol (it
+                -- can't be raised above it), leaking the vivid colour into the tail. as a
+                -- char fill it spans the whole row and, above the live add/delete bg AND
+                -- word spans, recolours the line in the quieter staged shade
+                vim.api.nvim_buf_set_extmark(col.bufnr, staged_ns, row, 0, {
+                    end_row = i,
+                    end_col = 0,
+                    hl_group = STAGED_LINE_HL[line.kind] or "differStagedLine",
+                    hl_eol = true,
+                    priority = 210, -- above the live add/delete bg (100) and word spans (200)
                 })
+                -- the changed words a notch above the staged line so the deep diff still reads
+                local word_hl = STAGED_WORD_HL[line.kind]
+                if word_hl and line.spans then
+                    for _, span in ipairs(line.spans) do
+                        vim.api.nvim_buf_set_extmark(col.bufnr, staged_ns, row, span.col_start, {
+                            end_col = span.col_end,
+                            hl_group = word_hl,
+                            priority = 215,
+                        })
+                    end
+                end
                 staged_lines[i] = true
             end
         end
@@ -333,11 +358,11 @@ function View:_paint_cursorline()
         return
     end
     local row = vim.api.nvim_win_get_cursor(win)[1] - 1
+    local line = col.map.lines[row + 1]
     -- tint the cursor line by the row's change kind so the add/remove colour survives
     -- under the cursor (a neutral overlay would bury it); plain neutral when off
     local hl = "differCursorLine"
     if self.cursorline_tint then
-        local line = col.map.lines[row + 1]
         local kind = line and line.kind
         if kind == "new" then
             hl = "differCursorLineAdd"
@@ -345,12 +370,16 @@ function View:_paint_cursorline()
             hl = "differCursorLineDelete"
         end
     end
+    -- a staged line is recoloured above the live word spans (210/215); lift the cursor
+    -- tint over that so the focused line still lights up in its kind. on a normal line
+    -- stay under the word spans (200) so changed words show through under the cursor
+    local staged = self.can_stage and line and line.hunk and self.staged_hunks[line.hunk]
     vim.api.nvim_buf_set_extmark(col.bufnr, cursor_ns, row, 0, {
         end_row = row + 1,
         end_col = 0,
         hl_group = hl,
         hl_eol = true, -- fill past EOL so the whole row is covered, like the diff bg
-        priority = 160, -- above the add/delete bg (100); word spans (200) show through
+        priority = staged and 220 or 160,
     })
 end
 
@@ -933,6 +962,7 @@ function View:_toggle_hunk(want_staged)
     if self:_apply_hunk(idx, want_staged) then
         self.staging.refresh()
         self:_paint_staged()
+        self:_paint_cursorline() -- re-lift the cursor tint above the fresh staged fill
     end
 end
 
@@ -978,6 +1008,7 @@ function View:_toggle_all(want_staged)
     if changed then
         self.staging.refresh()
         self:_paint_staged()
+        self:_paint_cursorline() -- re-lift the cursor tint above the fresh staged fill
     end
     return changed
 end

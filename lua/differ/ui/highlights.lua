@@ -16,10 +16,10 @@ local LINKS = {
     -- meta, body) ride the palette + theme bg in thread_groups
     -- our own cursor-line overlay: CursorLine is low-priority when it has no
     -- foreground (`:h hl-CursorLine`), so it loses to the diff line backgrounds; we
-    -- repaint it as a line_hl_group above them. links to CursorLine to track the theme
+    -- repaint it as a char-level extmark above them. links to CursorLine to track the theme
     differCursorLine = { link = "CursorLine" },
-    -- staged-hunk overlay: a muted full-line bg replacing the vivid
-    -- add/delete so a staged hunk reads as set-aside rather than a live change
+    -- neutral fallback for a staged line with no add/delete kind; kinded staged lines
+    -- use the dimmed deep-diff groups (differStagedLine{Add,Delete}/Word*) instead
     differStagedLine = { link = "CursorLine" },
     -- file panel chrome
     differPanelHeader = { link = "Title" },
@@ -205,17 +205,26 @@ end
 ---@return table<string, vim.api.keyset.highlight>
 local function diff_bg_groups(p)
     local base = bg_of({ "Normal" }, 0x14161b)
-    local line, cursor, word = 0.16, 0.28, 0.42 -- blend weights toward the vivid colour; tune to taste
+    local line, cursor, word = 0.22, 0.36, 0.52 -- blend weights toward the vivid colour; tune to taste
+    -- staged hunks keep the same-hue deep diff but quieter, so they read as set-aside
+    -- yet still show what changed; well under the live weights so staged reads distinctly
+    -- dimmer; line/word stay paired so the word patch still pops
+    local staged_line, staged_word = 0.12, 0.34
     return {
         differLineAdd = { bg = blend(p.green, base, line) },
         differLineDelete = { bg = blend(p.red, base, line) },
-        -- the cursor line over an add/delete line: the same hue a notch stronger than the
-        -- line tint, so it reads as the current line yet still as added/removed (word
-        -- spans at 0.42 still show through). sit between the line and word weights
+        -- the cursor line over an add/delete line: the same hue, well clear of the line
+        -- tint so it reads as the current line over text (not just past EOL) yet still as
+        -- added/removed; word spans stay a notch above so they show through
         differCursorLineAdd = { bg = blend(p.green, base, cursor) },
         differCursorLineDelete = { bg = blend(p.red, base, cursor) },
         differWordAdd = { bg = blend(p.green, base, word) },
         differWordDelete = { bg = blend(p.red, base, word) },
+        -- dimmed deep diff for staged hunks (same hue, quieter than the live tints)
+        differStagedLineAdd = { bg = blend(p.green, base, staged_line) },
+        differStagedLineDelete = { bg = blend(p.red, base, staged_line) },
+        differStagedWordAdd = { bg = blend(p.green, base, staged_word) },
+        differStagedWordDelete = { bg = blend(p.red, base, staged_word) },
     }
 end
 
