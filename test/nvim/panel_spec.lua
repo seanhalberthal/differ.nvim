@@ -73,53 +73,59 @@ describe("panel navigation", function()
         p:close()
     end)
 
-    it("gg / G jump to the first / last file and open it", function()
+    -- the file under the panel cursor (the entry on the cursor's meta row)
+    local function cursor_path(p)
+        local row = vim.api.nvim_win_get_cursor(p.winid)[1]
+        return p.meta[row].entry.path
+    end
+
+    it("gg / G move the cursor to the first / last file without opening it", function()
         local p, picked =
             panel({ fe("a.lua", "M", 1, 0), fe("b.lua", "M", 1, 0), fe("c.lua", "M", 1, 0) })
         p:open()
-        p:goto_edge("last")
+        local opened = #picked -- the file opened on open(); the cursor moves shouldn't add to it
+        p:cursor_to_edge("last")
         assert.are.equal(3, vim.api.nvim_win_get_cursor(p.winid)[1])
-        assert.are.equal("c.lua", picked[#picked].path)
-        p:goto_edge("first")
+        p:cursor_to_edge("first")
         assert.are.equal(1, vim.api.nvim_win_get_cursor(p.winid)[1])
-        assert.are.equal("a.lua", picked[#picked].path)
+        assert.are.equal(opened, #picked) -- nothing opened by the cursor move
         p:close()
     end)
 
     it("gg / G skip content-less pure renames at the edges", function()
         -- a.lua and d.lua are pure renames (no hunks); the edge jumps step past them
         -- to the first/last file that actually has a diff, mirroring the initial open
-        local p, picked = panel({
+        local p = panel({
             fe("a.lua", "R", 0, 0),
             fe("b.lua", "M", 1, 0),
             fe("c.lua", "M", 0, 2),
             fe("d.lua", "R", 0, 0),
         })
         p:open()
-        p:goto_edge("first")
-        assert.are.equal("b.lua", picked[#picked].path)
-        p:goto_edge("last")
-        assert.are.equal("c.lua", picked[#picked].path)
+        p:cursor_to_edge("first")
+        assert.are.equal("b.lua", cursor_path(p))
+        p:cursor_to_edge("last")
+        assert.are.equal("c.lua", cursor_path(p))
         p:close()
     end)
 
     it("gg / G still visit untracked files (zero numstat, but real content)", function()
         -- untracked '?' files report 0/0 counts like a pure rename, but they render
         -- their whole content, so the edge jumps must not skip them
-        local p, picked = panel({ fe("a.lua", "R", 0, 0), fe("z.lua", "?", 0, 0) })
+        local p = panel({ fe("a.lua", "R", 0, 0), fe("z.lua", "?", 0, 0) })
         p:open()
-        p:goto_edge("last")
-        assert.are.equal("z.lua", picked[#picked].path)
+        p:cursor_to_edge("last")
+        assert.are.equal("z.lua", cursor_path(p))
         p:close()
     end)
 
     it("gg / G fall back to the absolute edge when every file is content-less", function()
-        local p, picked = panel({ fe("a.lua", "R", 0, 0), fe("b.lua", "R", 0, 0) })
+        local p = panel({ fe("a.lua", "R", 0, 0), fe("b.lua", "R", 0, 0) })
         p:open()
-        p:goto_edge("first")
-        assert.are.equal("a.lua", picked[#picked].path)
-        p:goto_edge("last")
-        assert.are.equal("b.lua", picked[#picked].path)
+        p:cursor_to_edge("first")
+        assert.are.equal("a.lua", cursor_path(p))
+        p:cursor_to_edge("last")
+        assert.are.equal("b.lua", cursor_path(p))
         p:close()
     end)
 

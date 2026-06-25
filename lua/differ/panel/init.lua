@@ -776,21 +776,19 @@ function Panel:focus_first_unstaged()
     self:focus_first_changed()
 end
 
--- [[ / ]]: jump straight to the first/last content-bearing file row and open it,
--- skipping pure renames (blank diffs). `keep_focus` is threaded to `_open` so
--- in-view jumping stays in the diff window
+-- gg / G: move the cursor to the first/last visitable file row without opening it,
+-- skipping pure renames (blank diffs). plain list navigation; <CR>/o opens the row
+-- under the cursor
 ---@param edge "first"|"last"
----@param keep_focus boolean|nil
-function Panel:goto_edge(edge, keep_focus)
+function Panel:cursor_to_edge(edge)
+    if not self:is_open() then
+        return
+    end
     local row = self:_edge_file_row(edge)
     if not row then
         return
     end
-    self.selected_row = row
-    if self:is_open() then
-        vim.api.nvim_win_set_cursor(self.winid, { row, 0 })
-    end
-    self:_open(self.meta[row].entry, keep_focus)
+    vim.api.nvim_win_set_cursor(self.winid, { row, 0 })
 end
 
 -- the meta rows of the section headers, in order. titled blocks (Staged/Unstaged/
@@ -1047,10 +1045,10 @@ function Panel:_setup_window()
         self:goto_file("prev")
     end, "previous file")
     map(km.first_file, function()
-        self:goto_edge("first")
+        self:cursor_to_edge("first")
     end, "first file")
     map(km.last_file, function()
-        self:goto_edge("last")
+        self:cursor_to_edge("last")
     end, "last file")
     map(km.next_section, function()
         self:goto_section("next")

@@ -164,7 +164,7 @@ Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()
 |---|---|
 | `<CR>` / `o` | Open the file under the cursor |
 | `]f` / `[f` | Next / previous file |
-| `gg` / `G` | First / last file |
+| `gg` / `G` | Move cursor to first / last file |
 | `]]` / `[[` | Next / previous section |
 | `]c` / `[c` | Next / previous hunk |
 | `i` | Toggle tree / name listing |
