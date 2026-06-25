@@ -206,7 +206,7 @@ Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()
 | `q` | Close the merge tool |
 | `g?` | Help |
 
-The result buffer is the real worktree file, so `:w` writes it and stages it once the markers are gone. Because it's a real file, a format-on-save would otherwise run over the conflict markers; the merge tool sets `vim.b.disable_autoformat` (conform's opt-out) for the session, so honour that flag in your `format_on_save` gate if you format on save. If a formatter reformats the markers anyway, differ notices on save, refuses to stage the file, and warns once that the flag isn't being honoured.
+The result buffer is the real worktree file, so `:w` writes it and stages it once the markers are gone, then opens the next conflicted file; when none remain the session reports done and closes. Use `:Differ close` to stop after the current file. Because it's a real file, a format-on-save would otherwise run over the conflict markers; the merge tool sets `vim.b.disable_autoformat` (conform's opt-out) for the session, so honour that flag in your `format_on_save` gate if you format on save. If a formatter reformats the markers anyway, differ notices on save, refuses to stage the file, and warns once that the flag isn't being honoured. The merge result also disables in-buffer markdown rendering (render-markdown.nvim) for the session so the conflict markers aren't concealed as block-quotes, restoring it on close.
 
 ### Launchers (a starting point)
 

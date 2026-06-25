@@ -109,6 +109,28 @@ local function conflict_repo_multi()
     return root
 end
 
+-- a repo where merging `feature` conflicts on TWO files (f.txt then g.txt), to exercise
+-- write-driven advancing through the conflict set
+local function conflict_repo_two()
+    local root = vim.fn.tempname()
+    vim.fn.mkdir(root, "p")
+    git_ok(root, "init", "-q")
+    write(root .. "/f.txt", "a\nb\nc\n")
+    write(root .. "/g.txt", "a\nb\nc\n")
+    git_ok(root, "add", "f.txt", "g.txt")
+    git_ok(root, "commit", "-q", "-m", "base")
+    git_ok(root, "checkout", "-q", "-b", "feature")
+    write(root .. "/f.txt", "a\nTHEIRS\nc\n")
+    write(root .. "/g.txt", "a\nTHEIRS\nc\n")
+    git_ok(root, "commit", "-q", "-am", "theirs")
+    git_ok(root, "checkout", "-q", "main")
+    write(root .. "/f.txt", "a\nOURS\nc\n")
+    write(root .. "/g.txt", "a\nOURS\nc\n")
+    git_ok(root, "commit", "-q", "-am", "ours")
+    git(root, "merge", "feature")
+    return root
+end
+
 local merge_ns = vim.api.nvim_create_namespace("differ.merge")
 local flash_ns = vim.api.nvim_create_namespace("differ.merge.flash")
 
@@ -301,6 +323,38 @@ describe(":Differ mergetool resolution", function()
         fire(s.result_buf, "differ: take ours")
         vim.api.nvim_set_current_win(s.result_win)
         vim.cmd("silent write")
+        assert.are.same({}, require("differ.git").conflicted(root))
+    end)
+
+    it("advances to the next conflicted file once one is resolved and written", function()
+        local root = conflict_repo_two()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+        assert.are.equal("f.txt", s.path)
+        fire(s.result_buf, "differ: take ours")
+        vim.api.nvim_set_current_win(s.result_win)
+        vim.cmd("silent write")
+        -- f.txt stages immediately; the deferred advance opens the next conflicted file
+        vim.wait(2000, function()
+            return merge.current() ~= nil and merge.current().path == "g.txt"
+        end)
+        assert.are.equal("g.txt", merge.current().path)
+        assert.are.same({ "g.txt" }, require("differ.git").conflicted(root))
+    end)
+
+    it("reports done and closes the session once the last conflict is written", function()
+        local root = conflict_repo()
+        vim.cmd.edit(root .. "/f.txt")
+        merge.open({})
+        local s = merge.current()
+        fire(s.result_buf, "differ: take ours")
+        vim.api.nvim_set_current_win(s.result_win)
+        vim.cmd("silent write")
+        vim.wait(2000, function()
+            return merge.current() == nil
+        end)
+        assert.is_nil(merge.current())
         assert.are.same({}, require("differ.git").conflicted(root))
     end)
 

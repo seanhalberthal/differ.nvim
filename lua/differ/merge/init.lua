@@ -2,7 +2,9 @@
 -- top (plus base under the diff3_mixed layout), the result spine full-width below — drive
 -- conflict navigation (]x/[x), and resolve per conflict (take ours/theirs/both/base/none),
 -- splicing the chosen slab into the result and stripping the markers. the result column is
--- the real worktree file: :w writes it and auto-stages once no markers remain.
+-- the real worktree file: :w writes it and auto-stages once no markers remain, then advances
+-- to the next conflicted file; when none remain the session reports done and closes. the user
+-- can :Differ close any time to stop after the current file.
 --
 -- each input column is a read-only scratch buffer of a whole stage file, so windows use
 -- native `number` + native syntax; conflict regions are extmark-only in the differ.merge
@@ -51,6 +53,7 @@ local INPUT_HL = {
 ---@field total integer                   -- original conflict count (for the winbar N/M)
 ---@field active_index integer|nil        -- live index of the conflict under the cursor
 ---@field labels table<string, string>    -- side -> winbar pane label (OURS (HEAD), ...)
+---@field layout "default"|"diff3_mixed"  -- the chosen layout, reused when advancing to the next file
 ---@field result_win integer
 ---@field result_buf integer              -- the real worktree file (editable)
 ---@field bufs integer[]                  -- the scratch input buffers (deleted on close)
@@ -60,6 +63,7 @@ local INPUT_HL = {
 ---@field session_tab integer
 ---@field keymaps table                   -- resolved merge keymaps (for the g? cheatsheet)
 ---@field saved_autoformat any            -- the result buffer's prior disable_autoformat, restored on close
+---@field saved_markdown_render boolean|nil -- the result buffer's prior render-markdown state, restored on close
 ---@field autoformat_warned boolean|nil   -- set once a save is seen to have reformatted the markers
 ---@field diag_aug integer|nil            -- the DiagnosticChanged hook that hushes the result
 
@@ -149,6 +153,46 @@ local function suppress_diagnostics(buf)
         callback = clear,
     })
     return aug
+end
+
+-- toggle render-markdown.nvim for one buffer; its buf_enable/buf_disable act on the current
+-- buffer, so run them in the buffer's context. guarded so a missing plugin is a no-op
+---@param buf integer
+---@param on boolean
+local function set_markdown_render(buf, on)
+    local ok, rm = pcall(require, "render-markdown")
+    if ok then
+        pcall(vim.api.nvim_buf_call, buf, function()
+            local fn = on and rm.buf_enable or rm.buf_disable
+            fn()
+        end)
+    end
+end
+
+-- the result is a real `.md` file when the conflict is in markdown, and an in-buffer
+-- renderer (render-markdown.nvim) treats it as prose: it conceals the `>>>>>>>`/`<<<<<<<`
+-- runs as nested block-quotes and overlays a quote glyph, hiding the very markers the user
+-- resolves here. read the buffer's current render state (so close can restore it), then
+-- disable rendering for the session. guarded: a no-op when the plugin isn't loaded (e.g. a
+-- non-markdown result) or absent
+---@param buf integer
+---@return boolean|nil prior  -- the buffer's render-markdown enabled state before disabling
+local function quiet_markdown_render(buf)
+    -- only markdown results are at risk; gating here also avoids a lazy `require` loading the
+    -- plugin for an unrelated result filetype
+    if vim.bo[buf].filetype ~= "markdown" then
+        return nil
+    end
+    local prior
+    local ok_state, state = pcall(require, "render-markdown.state")
+    if ok_state then
+        local ok_cfg, cfg = pcall(state.get, buf)
+        if ok_cfg and cfg then
+            prior = cfg.enabled
+        end
+    end
+    set_markdown_render(buf, false)
+    return prior
 end
 
 -- a scratch buffer for one column: the side's content, named + filetyped so native
@@ -542,6 +586,9 @@ function M.close()
     restore_timeout() -- net in case the tab teardown didn't fire BufLeave on the result buf
     if vim.api.nvim_buf_is_valid(s.result_buf) then
         vim.b[s.result_buf].disable_autoformat = s.saved_autoformat -- give autoformat back
+        if s.saved_markdown_render then
+            set_markdown_render(s.result_buf, true) -- re-render markdown if it was on
+        end
     end
     -- drop the diagnostics hook; the producers re-lint the now-resolved file on their own
     if s.diag_aug then
@@ -601,12 +648,36 @@ local function show_help()
     require("differ.ui.help").show(lines, { title = " Differ: merge ", dismiss = dismiss })
 end
 
+---@type fun(root: string, relpath: string, model: differ.MergeModel, layout: "default"|"diff3_mixed")
+local lay_out
+
+-- once a file resolves + stages, open the next conflicted file (git's order, the staged file
+-- already dropped off), reusing the session layout. when none remain, report done and close,
+-- returning to the invoking tab. a next file that fails to build leaves the resolved view up
+-- rather than looping. no commit hint: the merge may be a rebase/cherry-pick/etc., so naming
+-- one command would be wrong as often as right
+---@param root string
+---@param layout "default"|"diff3_mixed"
+local function advance(root, layout)
+    local remaining = require("differ.git").conflicted(root)
+    if #remaining == 0 then
+        notify("all conflicts resolved and staged")
+        return M.close()
+    end
+    local relpath = remaining[1]
+    local model, err = require("differ.merge.model").build(root, relpath, nil)
+    if not model then
+        return notify(err or ("could not open " .. relpath), vim.log.levels.WARN)
+    end
+    lay_out(root, relpath, model, layout)
+end
+
 -- lay out the render in a fresh session tab and wire navigation
 ---@param root string
 ---@param relpath string
 ---@param model differ.MergeModel
 ---@param layout "default"|"diff3_mixed"
-local function lay_out(root, relpath, model, layout)
+function lay_out(root, relpath, model, layout)
     if session then -- re-open over a live session
         M.close()
     end
@@ -676,6 +747,7 @@ local function lay_out(root, relpath, model, layout)
             theirs = ("THEIRS (%s)"):format((first and first.label_theirs) or "MERGE_HEAD"),
             result = "RESULT",
         },
+        layout = layout,
         result_win = result_win,
         result_buf = result_buf,
         bufs = bufs,
@@ -684,6 +756,7 @@ local function lay_out(root, relpath, model, layout)
         return_tab = return_tab,
         session_tab = session_tab,
         diag_aug = suppress_diagnostics(result_buf), -- the markers aren't valid source
+        saved_markdown_render = quiet_markdown_render(result_buf), -- don't conceal the markers
     }
     for i = 1, #model.regions do
         session.order[i] = i
@@ -770,6 +843,16 @@ local function lay_out(root, relpath, model, layout)
             elseif #session.regions == 0 then
                 require("differ.git").stage(session.root, session.path)
                 notify(session.path .. " resolved and staged")
+                -- advance to the next conflicted file (or finish + close) once the write
+                -- settles; re-opening the session from inside this BufWritePost isn't safe.
+                -- root/layout are this session's lay_out upvalues. tie the deferred advance to
+                -- this exact session so a close (or a new session) before the tick cancels it
+                local this = session
+                vim.schedule(function()
+                    if session == this then
+                        advance(root, layout)
+                    end
+                end)
             else
                 notify(("%d conflict(s) still unresolved — not staged"):format(#session.regions))
             end
