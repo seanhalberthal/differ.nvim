@@ -178,8 +178,14 @@ Buffer-local, scoped to each surface. All configurable via `keymaps` in `setup()
 
 | Key | Action |
 |---|---|
-| `<CR>` / `o` | Open the commit / diff |
+| `<CR>` / `o` | Show the commit (file mode) / toggle fold (range mode) |
+| `]f` / `[f` | Next / previous file (range) or commit (file mode) |
+| `]]` / `[[` | Next / previous commit |
+| `gg` / `G` | First / last commit |
 | `za` | Toggle fold (range mode) |
+| `c` | Collapse the commit under the cursor (range mode) |
+| `O` / `C` | Expand / collapse every commit (range mode) |
+| `K` | Commit details |
 | `g?` | Help |
 
 **PR review** (on top of the diff + panel keys)
@@ -257,6 +263,27 @@ differ ships no global launchers — only the in-view buffer maps above and the 
 }
 ```
 
+### which-key
+
+differ's surfaces are scratch buffers (`buftype=nofile`), and the diff buffers carry the source file's filetype so the statusline reads right. Some which-key setups gate their trigger (re)registration on `buftype == ""`, or rebuild triggers in a way that briefly clears them globally (each `wk.add` calls `Buf.clear()`). In those setups the `<leader>` / `]` / `[` popups can fail to open over a differ buffer, even though the same keys work in a normal file. It tends to surface most reliably on filetypes with heavy buffer churn on open (e.g. a C# diff under a Roslyn setup that creates and tears down buffers), since that churn lands on which-key's trigger suspension windows.
+
+This is a property of the which-key integration, not of differ. If you hit it, pin permanent buffer-local maps on differ buffers (a plain keymap isn't managed by the trigger system, so it can't be cleared). Every differ buffer is named `differ://…`, so key off the name:
+
+```lua
+vim.api.nvim_create_autocmd("BufWinEnter", {
+  group = vim.api.nvim_create_augroup("differ-whichkey", { clear = true }),
+  callback = function(ev)
+    if not vim.api.nvim_buf_get_name(ev.buf):match("^differ://") then
+      return
+    end
+    local wk = require("which-key")
+    for _, key in ipairs({ " ", "]", "[" }) do
+      vim.keymap.set("n", key, function() wk.show(key) end, { buffer = ev.buf })
+    end
+  end,
+})
+```
+
 ### Lua API
 
 ```lua
@@ -301,18 +328,18 @@ require("differ").setup({
     prev_hunk = "[c",
     next_file = "]f",            -- diff; panel/history step the selection
     prev_file = "[f",
-    first_file = "gg",           -- panel: jump to the first/last file in the list
+    first_file = "gg",           -- panel/history: jump to the first/last file or commit
     last_file = "G",
-    next_section = "]]",         -- panel: jump between sections (Staged/Unstaged/...)
+    next_section = "]]",         -- panel: sections (Staged/Unstaged); history: commits
     prev_section = "[[",
     scroll_down = "f",           -- all three (shadows native f/b; set false to restore)
     scroll_up = "b",
     select = { "<CR>", "o" },    -- panel, history
     help = "g?",                 -- panel, history
     toggle_listing = "i",        -- panel: toggle tree / name
-    close_node = "c",            -- panel: collapse the dir under the cursor (or its parent)
-    close_all = "C",             -- panel: collapse every dir
-    open_all = "O",              -- panel: expand every dir
+    close_node = "c",            -- panel: collapse the dir under the cursor; history: the commit
+    close_all = "C",             -- panel/history: collapse every dir / commit
+    open_all = "O",              -- panel/history: expand every dir / commit
     stage = "s", unstage = "u",  -- diff (hunk-level), panel (file-level)
     stage_all = "S", unstage_all = "U",
     more_context = "d=", less_context = "d-",  -- diff

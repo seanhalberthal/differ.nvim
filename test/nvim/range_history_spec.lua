@@ -101,7 +101,7 @@ describe(":Differ log <range> (branch-range history)", function()
         h:close()
     end)
 
-    it("expands a commit to its files and opens the one under the cursor", function()
+    it("expands a commit's fold without opening, then opens a file from its row", function()
         local root = repo_with_branch()
         vim.cmd.edit(root .. "/a.lua")
         git_src.range_history({ range = "main..HEAD" })
@@ -110,17 +110,16 @@ describe(":Differ log <range> (branch-range history)", function()
         vim.api.nvim_set_current_win(h.winid)
         vim.api.nvim_win_set_cursor(h.winid, { h:_commit_line(2), 0 })
         h:select()
-        -- selecting a collapsed commit expands it and opens its first file (a.lua)
-        local v = view_in_origin(h)
-        assert.are.equal("a.lua", v.model.path)
-        assert.are.equal(V2, v.model.old_text) -- a.lua at c3's parent (c2)
-        assert.are.equal(V3, v.model.new_text) -- a.lua at c3
+        -- selecting a collapsed commit only toggles its fold; no diff opens, so the
+        -- view still shows c4's b.lua (opened on launch)
+        assert.is_true(h:_is_expanded(2))
+        assert.are.equal("b.lua", view_in_origin(h).model.path)
 
         -- now open c3's second file (c.lua) from its row
         vim.api.nvim_set_current_win(h.winid)
         vim.api.nvim_win_set_cursor(h.winid, { h:_file_line(2, 2), 0 })
         h:select()
-        v = view_in_origin(h)
+        local v = view_in_origin(h)
         assert.are.equal("c.lua", v.model.path)
         assert.are.equal("", v.model.old_text) -- newly added in c3
         assert.are.equal("c1\n", v.model.new_text)
@@ -171,6 +170,77 @@ describe(":Differ log <range> (branch-range history)", function()
         vim.api.nvim_win_set_cursor(h.winid, { h:_commit_line(1), 0 })
         h:toggle_fold()
         assert.is_false(has_file_row("b.lua")) -- collapsed
+        h:close()
+    end)
+
+    it("expands and collapses every commit with O / C", function()
+        local root = repo_with_branch()
+        vim.cmd.edit(root .. "/a.lua")
+        git_src.range_history({ range = "main..HEAD" })
+        local h = History.current()
+        vim.api.nvim_set_current_win(h.winid)
+        h:set_all_folds(false) -- O
+        for i = 1, #h.commits do
+            assert.is_true(h:_is_expanded(i))
+        end
+        h:set_all_folds(true) -- C
+        for i = 1, #h.commits do
+            assert.is_false(h:_is_expanded(i))
+        end
+        h:close()
+    end)
+
+    it("collapses the commit under the cursor with c, from a file row too", function()
+        local root = repo_with_branch()
+        vim.cmd.edit(root .. "/a.lua")
+        git_src.range_history({ range = "main..HEAD" })
+        local h = History.current()
+        vim.api.nvim_set_current_win(h.winid)
+        assert.is_true(h:_is_expanded(1)) -- c4 starts expanded
+        -- cursor on c4's file row, c collapses its parent commit and lands on it
+        vim.api.nvim_win_set_cursor(h.winid, { h:_file_line(1, 1), 0 })
+        h:close_node()
+        assert.is_false(h:_is_expanded(1))
+        assert.are.equal(h:_commit_line(1), vim.api.nvim_win_get_cursor(h.winid)[1])
+        h:close()
+    end)
+
+    it("steps between commit headers with ]] / [[ without opening", function()
+        local root = repo_with_branch()
+        vim.cmd.edit(root .. "/a.lua")
+        git_src.range_history({ range = "main..HEAD" })
+        local h = History.current()
+        vim.api.nvim_set_current_win(h.winid)
+        local opened = view_in_origin(h).model.path -- b.lua, from launch
+        vim.api.nvim_win_set_cursor(h.winid, { h:_commit_line(1), 0 })
+        h:step_commit("next")
+        assert.are.equal(h:_commit_line(2), vim.api.nvim_win_get_cursor(h.winid)[1])
+        assert.are.equal(opened, view_in_origin(h).model.path) -- no diff opened
+        h:step_commit("prev")
+        assert.are.equal(h:_commit_line(1), vim.api.nvim_win_get_cursor(h.winid)[1])
+
+        -- [[ from a file row lands on its parent commit's header before stepping back
+        h:set_all_folds(false) -- expand every commit so file rows exist
+        vim.api.nvim_win_set_cursor(h.winid, { h:_file_line(2, 1), 0 })
+        h:step_commit("prev")
+        assert.are.equal(h:_commit_line(2), vim.api.nvim_win_get_cursor(h.winid)[1])
+        h:step_commit("prev") -- now on the header, so step to the previous commit
+        assert.are.equal(h:_commit_line(1), vim.api.nvim_win_get_cursor(h.winid)[1])
+        h:close()
+    end)
+
+    it("jumps to the first / last commit with gg / G without opening", function()
+        local root = repo_with_branch()
+        vim.cmd.edit(root .. "/a.lua")
+        git_src.range_history({ range = "main..HEAD" })
+        local h = History.current()
+        vim.api.nvim_set_current_win(h.winid)
+        local opened = view_in_origin(h).model.path
+        h:cursor_to_edge("last")
+        assert.are.equal(h:_commit_line(#h.commits), vim.api.nvim_win_get_cursor(h.winid)[1])
+        h:cursor_to_edge("first")
+        assert.are.equal(h:_commit_line(1), vim.api.nvim_win_get_cursor(h.winid)[1])
+        assert.are.equal(opened, view_in_origin(h).model.path) -- no diff opened
         h:close()
     end)
 

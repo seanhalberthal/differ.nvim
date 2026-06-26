@@ -502,7 +502,7 @@ function History:_open_file(ci, fi, keep_focus)
 end
 
 -- <CR>/o: file mode opens the commit under the cursor; range mode toggles a commit's
--- fold (opening its first file on expand) or opens the file under the cursor
+-- fold (no diff opened) or opens the file under the cursor, mirroring the file panel
 ---@param keep_focus boolean|nil
 function History:select(keep_focus)
     local m = self:_cursor_meta()
@@ -513,13 +513,7 @@ function History:select(keep_focus)
         return self:_open(m.ci, keep_focus)
     end
     if m.kind == "commit" then
-        if self:_is_expanded(m.ci) then
-            self:_set_expanded(m.ci, false)
-            self:render()
-            self:_move_cursor(self:_commit_line(m.ci))
-        else
-            self:_open_file(m.ci, 1, keep_focus) -- expand + show the first file
-        end
+        self:toggle_fold()
     else
         self:_open_file(m.ci, m.fi, keep_focus)
     end
@@ -535,6 +529,61 @@ function History:toggle_fold()
     self:_set_expanded(m.ci, not self:_is_expanded(m.ci))
     self:render()
     self:_move_cursor(self:_commit_line(m.ci))
+end
+
+-- c: collapse the commit under the cursor (or the parent commit of a file row),
+-- landing the cursor on it. range mode only, mirroring the file panel's close_node
+function History:close_node()
+    local m = self:_cursor_meta()
+    if not m then
+        return
+    end
+    self:_set_expanded(m.ci, false)
+    self:render()
+    self:_move_cursor(self:_commit_line(m.ci))
+end
+
+-- O / C: expand or collapse every commit's files, keeping the cursor on its commit.
+-- expand-all lazily loads each commit's file list. range mode only
+---@param collapsed boolean
+function History:set_all_folds(collapsed)
+    local m = self:_cursor_meta()
+    local ci = (m and m.ci) or self.index
+    for i = 1, #self.commits do
+        self:_set_expanded(i, not collapsed)
+    end
+    self:render()
+    self:_move_cursor(self:_commit_line(ci))
+end
+
+-- ]] / [[: move the cursor to the next/previous commit header without opening it. in
+-- range mode this skips file rows; in file mode every row is already a commit. [[ from
+-- below a commit's header (a file row or its continuation line) lands on that header
+-- first, only stepping to the previous commit once the cursor is already on it
+---@param direction "next"|"prev"
+function History:step_commit(direction)
+    local m = self:_cursor_meta()
+    local ci = (m and m.ci) or self.index
+    if direction == "prev" then
+        local header = self:_commit_line(ci)
+        local cur = self:is_open() and vim.api.nvim_win_get_cursor(self.winid)[1]
+        if header and cur and cur > header then
+            return self:_move_cursor(header)
+        end
+        ci = ci - 1
+    else
+        ci = ci + 1
+    end
+    if ci < 1 or ci > #self.commits then
+        return
+    end
+    self:_move_cursor(self:_commit_line(ci))
+end
+
+-- gg / G: move the cursor to the first / last commit without opening it
+---@param edge "first"|"last"
+function History:cursor_to_edge(edge)
+    self:_move_cursor(self:_commit_line(edge == "first" and 1 or #self.commits))
 end
 
 -- ]f / [f. file mode: step to the next/previous commit. range mode: step file rows,
@@ -595,14 +644,20 @@ function History:show_help()
     local lines = {}
     if self.mode == "range" then
         vim.list_extend(lines, {
-            " <CR> / o   open file / toggle fold",
+            " <CR> / o   toggle fold / open file",
             " za         toggle fold",
+            " O / C      expand / collapse all",
+            " c          collapse commit",
             " ]f / [f    next / previous file",
+            " ]] / [[    next / previous commit",
+            " gg / G     first / last commit",
         })
     else
         vim.list_extend(lines, {
             " <CR> / o   show commit",
             " ]f / [f    next / previous commit",
+            " ]] / [[    move between commits",
+            " gg / G     first / last commit",
         })
     end
     vim.list_extend(lines, {
@@ -666,10 +721,31 @@ function History:_setup_window()
     map(km.prev_file, function()
         self:step("prev")
     end, "previous " .. item)
+    map(km.next_section, function()
+        self:step_commit("next")
+    end, "next commit")
+    map(km.prev_section, function()
+        self:step_commit("prev")
+    end, "previous commit")
+    map(km.first_file, function()
+        self:cursor_to_edge("first")
+    end, "first commit")
+    map(km.last_file, function()
+        self:cursor_to_edge("last")
+    end, "last commit")
     if self.mode == "range" then
         map(km.toggle_fold, function()
             self:toggle_fold()
         end, "toggle fold")
+        map(km.close_node, function()
+            self:close_node()
+        end, "collapse commit")
+        map(km.close_all, function()
+            self:set_all_folds(true)
+        end, "collapse all commits")
+        map(km.open_all, function()
+            self:set_all_folds(false)
+        end, "expand all commits")
     end
     map(km.next_hunk, function()
         require("differ").goto_hunk("next")
