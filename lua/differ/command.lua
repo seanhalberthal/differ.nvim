@@ -220,7 +220,8 @@ end
 
 -- :Differ log [arg]: file history. no arg or an arg naming a readable file →
 -- single-file history (that file, else the current buffer); `base` is the trunk
--- shortcut → branch-range history of `<base>...HEAD`; any other arg is a rev-range
+-- shortcut → branch-range history of `<base>...HEAD`; any other arg is a rev-range.
+-- bare `:Differ log` with no real file in the buffer falls back to full HEAD history
 ---@param arg string|nil
 function M.log(arg)
     if arg == "base" then
@@ -232,6 +233,14 @@ function M.log(arg)
     end
     if arg and arg ~= "" and vim.fn.filereadable(vim.fn.fnamemodify(arg, ":p")) == 0 then
         return require("differ.git").range_history({ range = arg })
+    end
+    -- bare `:Differ log` with no real file in the buffer (dashboard/unnamed/home
+    -- screen) falls back to the full HEAD history rather than warning
+    if not arg or arg == "" then
+        local file = vim.api.nvim_buf_get_name(0)
+        if file == "" or vim.fn.filereadable(file) == 0 then
+            return require("differ.git").range_history({ range = "HEAD" })
+        end
     end
     require("differ.git").history({ path = (arg ~= "" and arg) or nil })
 end
