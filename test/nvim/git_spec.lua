@@ -107,7 +107,7 @@ describe(":Differ panel", function()
         return vim.list_slice(p.lines, 4, #p.lines - 3)
     end
 
-    it("opens the default panel as a single Unstaged section and toggles the sidebar", function()
+    it("opens the default panel; bare :Differ re-opens, :Differ panel toggles", function()
         local root = fresh_repo()
         write(root .. "/a.lua", "local x = 2\nreturn x\n") -- modified, not staged
         vim.cmd.edit(root .. "/a.lua")
@@ -120,21 +120,28 @@ describe(":Differ panel", function()
         -- the +/- counts aren't in the text: they're a right-aligned virt_text extmark
         assert.are.same({ "Unstaged (1)", "M a.lua" }, body(p))
 
-        git_src.panel({}) -- toggle hides the sidebar; the session stays alive
-        assert.are.equal(p, Panel.current())
-        assert.is_false(p:is_open())
-
-        -- `panel set` reveals a hidden sidebar at the requested position
-        require("differ.command").panel("set", "right")
+        -- a bare :Differ over a live session just (re)opens; it never toggles shut
+        git_src.panel({})
         assert.are.equal(p, Panel.current())
         assert.is_true(p:is_open())
-        assert.are.equal("right", p.position)
 
-        git_src.panel({}) -- toggle hides it again
-        assert.is_false(p:is_open())
-
-        git_src.panel({}) -- toggle shows it again, same session
+        -- :Differ panel (opts.toggle) is the explicit hide/show gesture
+        git_src.panel({ toggle = true }) -- hides the sidebar; the session stays alive
         assert.are.equal(p, Panel.current())
+        assert.is_false(p:is_open())
+        git_src.panel({ toggle = true }) -- shows it again
+        assert.is_true(p:is_open())
+
+        -- `:Differ panel <pos>` reveals a hidden sidebar at the requested edge
+        git_src.panel({ toggle = true }) -- hide
+        require("differ.command").panel("left")
+        assert.is_true(p:is_open())
+        assert.are.equal("left", p.position)
+
+        -- a bare :Differ reveals a hidden sidebar too (show, not toggle)
+        git_src.panel({ toggle = true }) -- hide
+        assert.is_false(p:is_open())
+        git_src.panel({})
         assert.is_true(p:is_open())
 
         require("differ.git").close() -- :Differ close ends the session
@@ -155,7 +162,7 @@ describe(":Differ panel", function()
         local p = Panel.current()
         assert.are.equal(file_line(p, "a.lua"), p.selected_row)
 
-        git_src.panel({}) -- hide the sidebar; the diff view + session stay alive
+        git_src.panel({ toggle = true }) -- hide the sidebar; the diff view + session stay alive
         assert.is_false(p:is_open())
 
         vim.api.nvim_set_current_win(p.origin_win)
@@ -266,7 +273,7 @@ describe(":Differ panel", function()
 
         git_src.panel({ open_first = true })
         local p = Panel.current()
-        git_src.panel({}) -- toggle hides the sidebar (closes the panel window)
+        git_src.panel({ toggle = true }) -- toggle hides the sidebar (closes the panel window)
         vim.wait(100) -- give any (wrongly) scheduled teardown a chance to fire
         assert.are.equal(p, Panel.current()) -- still the same live session
         require("differ.git").close()

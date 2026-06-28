@@ -532,8 +532,8 @@ function M.resolve_base()
     return base
 end
 
--- :Differ panel: open (or toggle) the file panel over a git change set.
--- selecting a file re-sources the one View in place rather than spawning a new
+-- :Differ panel: open the file panel over a git change set (opts.toggle hides/shows
+-- a live one). selecting a file re-sources the one View in place rather than spawning a new
 -- one. `opts.rev` is the rev spec; position/listing/height/width pass through to
 -- the panel and are runtime-adjustable via Panel.current(). `opts.open_first`
 -- selects the first file straight away (DiffviewOpen-style: bare `:Differ`)
@@ -545,23 +545,32 @@ end
 ---@field width? integer
 ---@field open_first? boolean
 ---@field supersede? boolean  -- close a live session and reopen (`:Differ <rev>` idempotency)
+---@field toggle? boolean  -- `:Differ panel`: hide/show the live sidebar in place
 ---@param opts differ.git.PanelOpts
 ---@return differ.Panel|nil
 function M.panel(opts)
     local Panel = require("differ.panel")
-    -- a live session: a bare `:Differ` / the `:Differ panel` command toggles the
-    -- sidebar's visibility in place (the diff view + session tab survive). a `:Differ
-    -- <rev>` (opts.supersede) re-runs idempotently — close the live session and open a
-    -- fresh diff of the new rev. `:Differ close` ends the session
+    -- a live session, by gesture: `:Differ <rev>` (opts.supersede) re-runs idempotently —
+    -- close the session and open a fresh diff of the new rev. `:Differ panel` (opts.toggle)
+    -- hides/shows the sidebar in place. a bare `:Differ` just (re)opens — reveal a hidden
+    -- sidebar and focus it, a no-op when already open, never toggling it shut. `:Differ
+    -- close` ends the session
     local existing = Panel.current()
     if existing then
         local has_rev = (type(opts.rev) == "string" and opts.rev ~= "")
             or (type(opts.rev) == "table" and #opts.rev > 0)
-        if not (opts.supersede and has_rev) then
+        if opts.supersede and has_rev then
+            existing:close() -- close cascades to the diff view + session tab; current = nil
+        elseif opts.toggle then
             existing:toggle()
             return existing
+        else
+            existing:show() -- reveal if hidden; no-op if already open
+            if existing:is_open() then
+                vim.api.nvim_set_current_win(existing.winid)
+            end
+            return existing
         end
-        existing:close() -- close cascades to the diff view + session tab; current = nil
     end
 
     -- the file + line :Differ was invoked from, so open_first can open that file at

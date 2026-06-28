@@ -54,8 +54,9 @@ local PANEL_POSITIONS = { left = true, right = true, top = true, bottom = true }
 
 -- :Differ panel [left|right|top|bottom|revspec], open the file panel over a
 -- change set and show the first file's diff (the diff window is the session anchor,
--- so there's never a panel without one). on a live session it hides/shows the sidebar
--- in place; `:Differ close` ends the session. a position word repositions a live panel
+-- so there's never a panel without one). on a live session a bare `:Differ panel`
+-- toggles the sidebar's visibility in place (bare `:Differ` just opens); `:Differ
+-- close` ends the session. a position word repositions a live panel
 -- or history sidebar, reveals a hidden sidebar there, or opens one at that edge when no
 -- session exists (height/width carry over from config); any other arg is a rev spec
 ---@param arg string|nil
@@ -86,7 +87,11 @@ function M.panel(arg)
                 .. "or :Differ close to end it"
         )
     end
-    require("differ.git").panel({ rev = (arg ~= "" and arg) or nil, open_first = true })
+    require("differ.git").panel({
+        rev = (arg ~= "" and arg) or nil,
+        open_first = true,
+        toggle = true, -- `:Differ panel` is the explicit hide/show gesture
+    })
 end
 
 local pr = function()
@@ -344,7 +349,8 @@ function M.dispatch(fargs)
         return require("differ.merge").open({})
     end
     -- `:Differ <rev>` is idempotent: re-running it over a live session opens the new diff
-    -- and closes the previous one (supersede), rather than toggling the sidebar
+    -- and closes the previous one (supersede). a bare `:Differ` over a live session just
+    -- (re)opens the sidebar — it never toggles it shut (`:Differ panel` is the toggle)
     require("differ.git").panel({ rev = fargs, open_first = true, supersede = true })
 end
 

@@ -225,15 +225,16 @@ differ ships no global launchers — only the in-view buffer maps above and the 
   cmd = { "Differ", "D" }, -- "D" matches command_alias below; see note above
   keys = {
     -- local diff / history
-    { "<leader>do", "<cmd>Differ<CR>",                       desc = "Diff: open (HEAD vs worktree)" },
-    { "<leader>dc", "<cmd>Differ close<CR>",                 desc = "Diff: close" },
-    { "<leader>dt", "<cmd>Differ base<CR>",                  desc = "Diff: branch total (vs base)" },
-    { "<leader>de", "<cmd>Differ gofile<CR>",                desc = "Diff: open the real file" },
-    { "<leader>dh", "<cmd>Differ log<CR>",                   desc = "Diff: file history" },
+    { '<leader>do', '<cmd>Differ HEAD<CR>',                   desc = "Diff: open (vs index)" },
+    { "<leader>dc", "<cmd>Differ close<CR>",                  desc = "Diff: close" },
+    { "<leader>dt", "<cmd>Differ base<CR>",                   desc = "Diff: branch total (vs base)" },
+    { "<leader>de", "<cmd>Differ gofile<CR>",                 desc = "Diff: open the real file" },
+    { '<leader>dd', '<cmd>Differ panel<CR>',                  desc = "Diff: panel toggle" },
+    { "<leader>dh", "<cmd>Differ log<CR>",                    desc = "Diff: file history" },
     { "<leader>dp", "<cmd>Differ log origin/HEAD...HEAD<CR>", desc = "Diff: PR range (local, no API)" },
-    { "<leader>dl", "<cmd>Differ layout<CR>",                desc = "Diff: toggle layout" },
+    { "<leader>dl", "<cmd>Differ layout<CR>",                 desc = "Diff: toggle layout" },
     -- pr review (sidecar + github)
-    { "<leader>pl", "<cmd>Differ pr list<CR>",               desc = "PR: list" },
+    { "<leader>pl", "<cmd>Differ pr list<CR>",                desc = "PR: list" },
     {
       "<leader>po",
       function()
