@@ -59,6 +59,9 @@ function M.diff()
     if not map then
         return ""
     end
+    if view.model.binary then
+        return (" %s %%=binary "):format(esc(vim.fn.fnamemodify(view.model.path, ":t")))
+    end
     local total = #view.model.hunks
     local lnum = vim.api.nvim_win_get_cursor(win)[1]
     local k = math.max(hunk_at(map, lnum), total > 0 and 1 or 0)

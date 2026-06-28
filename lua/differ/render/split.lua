@@ -16,6 +16,8 @@ local walk = require("differ.render.walk")
 
 local M = {}
 
+local BINARY_NOTICE = "Binary file not shown"
+
 -- render a model into two index-aligned columns ("old" left, "new" right). both
 -- columns share the same fold ranges since their rows are aligned
 ---@param model differ.DiffModel
@@ -57,6 +59,13 @@ function M.render(model, opts)
             },
             rows = #old_lines,
         }
+    end
+
+    -- a binary file isn't diffed (it would blow up the word pass); show a placeholder
+    -- on both sides so the columns stay row-aligned
+    if model.binary then
+        push_row(BINARY_NOTICE, { kind = "meta" }, BINARY_NOTICE, { kind = "meta" })
+        return result()
     end
 
     if #model.hunks == 0 then
