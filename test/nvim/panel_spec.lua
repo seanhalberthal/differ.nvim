@@ -254,6 +254,27 @@ describe("panel navigation", function()
         vim.g.statusline_winid = nil
         p:close()
     end)
+
+    it("paints the diff --stat totals as virt_text on the help line", function()
+        local p = panel({ fe("a.lua", "M", 31, 1), fe("b.lua", "M", 39, 2) }, { root = "/repo" })
+        p:open()
+        assert.are.equal(70, p.add_total)
+        assert.are.equal(3, p.del_total)
+        -- the help line (row 2) carries the totals as a right-aligned virt_text extmark
+        local ns = vim.api.nvim_get_namespaces()["differ.panel"]
+        local marks = vim.api.nvim_buf_get_extmarks(p.bufnr, ns, { 1, 0 }, { 1, -1 }, {
+            details = true,
+        })
+        local texts = {}
+        for _, m in ipairs(marks) do
+            for _, chunk in ipairs((m[4] or {}).virt_text or {}) do
+                texts[#texts + 1] = chunk[1]
+            end
+        end
+        assert.is_truthy(vim.tbl_contains(texts, "+70"))
+        assert.is_truthy(vim.tbl_contains(texts, "-3"))
+        p:close()
+    end)
 end)
 
 -- the panel window's position relative to the origin window it was split from
@@ -321,9 +342,10 @@ describe("panel runtime position", function()
         p:close()
     end)
 
-    it("caps the content column below the window width for top/bottom panels", function()
+    it("floors the content column at the configured width for top/bottom panels", function()
         -- a top/bottom panel spans the full editor width, so the +/- counts are
-        -- pinned to content_width (the configured width), not the far right edge
+        -- pinned to content_width, not the far right edge. a short list keeps the
+        -- configured width as a stable floor
         local p = panel({ fe("a.lua") }, { position = "bottom", width = 30 })
         p:open()
         local full = vim.api.nvim_win_get_width(p.winid)
@@ -331,6 +353,30 @@ describe("panel runtime position", function()
         assert.are.equal(30, p.content_width)
         p:set_position("right") -- vertical split: content fills the whole window
         assert.are.equal(vim.api.nvim_win_get_width(p.winid), p.content_width)
+        p:close()
+    end)
+
+    it("grows the content column to fit long names in top/bottom panels (no truncation)", function()
+        -- a name longer than the configured width must render in full, with the
+        -- content column growing to anchor the pinned counts just past it
+        local long = "a_very_long_filename_that_exceeds_thirty_columns.lua"
+        local p = panel({ fe(long, "M", 1, 2) }, { position = "bottom", width = 30 })
+        p:open()
+        assert.is_true(p.content_width > 30, "content column should grow past the floor")
+        assert.is_true(p.content_width <= vim.api.nvim_win_get_width(p.winid))
+        assert.is_truthy(lines(p)[1]:find(long, 1, true), "long name must not be truncated")
+        assert.is_falsy(lines(p)[1]:find("…", 1, true))
+        p:close()
+    end)
+
+    it("truncates at the editor edge when content overflows the window", function()
+        -- when even the natural width exceeds the live window, fall back to
+        -- truncating at the editor edge rather than spilling off-screen
+        local huge = string.rep("x", 500) .. ".lua"
+        local p = panel({ fe(huge, "M", 1, 2) }, { position = "bottom", width = 30 })
+        p:open()
+        assert.are.equal(vim.api.nvim_win_get_width(p.winid), p.content_width)
+        assert.is_truthy(lines(p)[1]:find("…", 1, true), "overflow should truncate")
         p:close()
     end)
 

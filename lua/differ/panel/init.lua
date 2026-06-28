@@ -86,6 +86,8 @@ local STATUS_HL = {
 ---@field lines string[]
 ---@field meta differ.panel.LineMeta[]
 ---@field file_total integer|nil  -- total files in the change set (fold-independent)
+---@field add_total integer|nil  -- total additions across the change set (diff --stat, on the help line)
+---@field del_total integer|nil  -- total deletions across the change set
 ---@field augroup integer|nil  -- autocmd group for the external-change refresh
 ---@field win_augroup integer|nil  -- autocmd group for the resize re-fit
 ---@field selected_row integer|nil  -- meta row of the last opened file; drives ]f/[f
@@ -237,12 +239,16 @@ function Panel:render()
     -- independent of which dirs are folded, so the section counts + winbar meter
     -- stay accurate when collapsed (entry -> 1-based index)
     local abs_of, total = {}, 0
+    -- diff --stat totals, summed over every file (fold-independent, like the count)
+    local add_total, del_total = 0, 0
     for bi, sec in ipairs(self.sections) do
         local root, strip = self:_section_root(sec)
         for _, row in ipairs(tree.rows(root, "tree", {})) do -- fully expanded
             if row.kind == "file" then
                 total = total + 1
                 abs_of[row.entry] = total
+                add_total = add_total + (row.entry.additions or 0)
+                del_total = del_total + (row.entry.deletions or 0)
             end
         end
         blocks[#blocks + 1] = {
@@ -256,17 +262,45 @@ function Panel:render()
         }
     end
     self.file_total = total
+    -- diff --stat totals, painted on the help line (the file count already sits in the
+    -- winbar meter, so the totals show the +A -B the count doesn't repeat)
+    self.add_total, self.del_total = add_total, del_total
     local header = self.root and { path = self.root, help = "g?" } or nil
     -- live window width, falling back to the configured width when the window
     -- isn't open yet (headless construction / tests)
     local live = self:is_open() and vim.api.nvim_win_get_width(self.winid) or self.width
     -- a top/bottom panel spans the full editor width, so the window's right edge
-    -- is far from the file list; cap the content column at the configured width
-    -- so name truncation and the pinned +/- counts stay next to the tree
+    -- is far from the file list. rather than cap the content column at the fixed
+    -- configured width (which truncates names that would otherwise fit), fit it to
+    -- the content: render untruncated, measure the longest name plus its pinned
+    -- counts, and anchor the column just past it. floor at the configured width so
+    -- a short list keeps a stable column; cap at the live width so an overflowing
+    -- list still truncates at the editor edge
     local horizontal = self.position == "top" or self.position == "bottom"
-    local width = horizontal and math.min(live, self.width) or live
+    local out, width
+    if horizontal then
+        out = render.lines(blocks, header, self.icon_for, self.footer, nil)
+        local needed = 0
+        for i, m in ipairs(out.meta) do
+            if m.kind == "file" then
+                local e = m.entry
+                local reserve = (e.additions and (e.additions > 0 or e.deletions > 0))
+                        and #("+" .. e.additions) + #("-" .. e.deletions) + 2
+                    or 0
+                needed = math.max(needed, #out.lines[i] + reserve)
+            end
+        end
+        width = math.min(live, math.max(needed, self.width))
+        -- the untruncated render stands unless the content overflows the window, in
+        -- which case re-render truncated to the live edge
+        if width < needed then
+            out = render.lines(blocks, header, self.icon_for, self.footer, width)
+        end
+    else
+        width = live
+        out = render.lines(blocks, header, self.icon_for, self.footer, width)
+    end
     self.content_width = width
-    local out = render.lines(blocks, header, self.icon_for, self.footer, width)
     self.lines, self.meta = out.lines, out.meta
     for _, m in ipairs(self.meta) do
         if m.kind == "file" then
@@ -302,6 +336,27 @@ function Panel:_highlight()
                 0,
                 { end_col = eol, hl_group = "differPanelHelp" }
             )
+            -- the diff --stat totals ride the (otherwise sparse) help line, pinned to
+            -- the same content column as the per-file counts so they stack directly
+            -- above them as a column total. virt_text, not line text, so it can't be
+            -- clipped the way a winbar segment is on a narrow panel
+            if (self.add_total or 0) > 0 or (self.del_total or 0) > 0 then
+                local label = "--stat"
+                local add = ("+%d"):format(self.add_total)
+                local del = ("-%d"):format(self.del_total)
+                local reserve = #label + 1 + #add + #del + 2
+                vim.api.nvim_buf_set_extmark(self.bufnr, ns, row, 0, {
+                    virt_text = {
+                        { label, "differPanelContext" },
+                        { " ", "Normal" },
+                        { add, "differPanelCountAdd" },
+                        { " ", "Normal" },
+                        { del, "differPanelCountDelete" },
+                        { " ", "Normal" },
+                    },
+                    virt_text_win_col = math.max((self.content_width or 0) - reserve, 0),
+                })
+            end
         elseif m.kind == "header" or m.kind == "foothead" then
             local title_end = m.prefix_col or eol
             vim.api.nvim_buf_set_extmark(
