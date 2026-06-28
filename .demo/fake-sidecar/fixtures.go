@@ -146,7 +146,7 @@ func (f *fixture) GetThreads(_ context.Context, _, _ string, _ int) ([]github.Th
 func (f *fixture) GetTimeline(_ context.Context, _, _ string, _ int) (*github.Timeline, error) {
 	return &github.Timeline{
 		Comments: []github.TimelineComment{
-			{Author: other, Body: "thanks for tackling this — dracula's been on the wishlist for a while.", CreatedAt: f.ago(5 * time.Hour)},
+			{Author: other, Body: "thanks for tackling this, dracula's been on the wishlist for a while.", CreatedAt: f.ago(5 * time.Hour)},
 		},
 		Reviews: []github.ReviewSummary{
 			{Author: other, State: "COMMENTED", Body: "looks close. one inline question on the accent.", CreatedAt: f.ago(3 * time.Hour)},

@@ -43,14 +43,6 @@ The GitHub side runs in a separate process rather than the editor, so opening a 
 
 ---
 
-## Status
-
-Everything through the merge tool is built and usable: both layouts, the file picker and panel, hunk staging, file history, the full PR-review flow (inline threads, drafts, viewed-state, checks, lifecycle actions), and 3-way conflict resolution.
-
-A live layer on top of the sidecar (optimistic updates, prefetch, warm cache, server-pushed refresh) is on the roadmap, TBD. It hasn't had broad testing yet, so expect some rough edges.
-
----
-
 ## Requirements
 
 - Neovim 0.10+ (uses `vim.system`, `vim.fs.relpath`, `vim.diff`)
@@ -216,7 +208,7 @@ The result buffer is the real worktree file, so `:w` writes it and stages it onc
 
 ### Launchers (a starting point)
 
-differ ships no global launchers — only the in-view buffer maps above and the optional `command_alias`. These are the `<leader>` launchers I drive it with, as a lazy.nvim spec you can lift wholesale or trim to taste.
+differ ships no global launchers - only the in-view buffer maps above and the optional `command_alias`. These are the `<leader>` launchers I drive it with, as a lazy.nvim spec you can lift wholesale or trim to taste.
 
 ```lua
 {
