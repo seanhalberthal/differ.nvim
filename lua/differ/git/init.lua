@@ -756,10 +756,11 @@ function M.panel(opts)
     ---@return boolean shown
     local function show_entry(entry, focus_line)
         local model = model_for(entry)
-        if #model.hunks == 0 then
+        if #model.hunks == 0 and not model.binary then
             -- a pure rename or copy has identical content on both sides, so it diffs
             -- to zero hunks but is still a real change worth opening (the file just
-            -- moved). any other zero-hunk entry is stale: committed, staged away, or
+            -- moved). a binary file also has no hunks but renders a placeholder, so it
+            -- opens too. any other zero-hunk entry is stale: committed, staged away, or
             -- reverted outside differ
             local is_move = (entry.status == "R" or entry.status == "C")
                 and entry.previous_path ~= nil

@@ -18,10 +18,12 @@
 ---@field new_text string
 ---@field head string|nil  -- git branch, for the synthetic buffer's statusline (set by the frontend)
 ---@field root string|nil  -- repo root (absolute), so jump-to-file can resolve the real file (set by the frontend)
+---@field binary boolean|nil  -- either side is binary: no hunks, renderers show a placeholder
 
 local text_util = require("differ.util.text")
 local to_lines = text_util.to_lines
 local ensure_trailing_nl = text_util.ensure_trailing_nl
+local is_binary = text_util.is_binary
 
 local M = {}
 
@@ -51,6 +53,24 @@ end
 ---@param opts differ.model.BuildOpts
 ---@return differ.DiffModel
 function M.build(opts)
+    -- binary content has no line structure: stray 0x0a bytes would split it into
+    -- pathological pseudo-lines and drive the word-diff pairing into O(n*m) over
+    -- megabytes (an OOM that takes the editor down). detect it up front, skip the
+    -- diff entirely, and let the renderers show a placeholder
+    if is_binary(opts.old_text) or is_binary(opts.new_text) then
+        return {
+            path = opts.path,
+            old_rev = opts.old_rev,
+            new_rev = opts.new_rev,
+            hunks = {},
+            old_text = opts.old_text,
+            new_text = opts.new_text,
+            head = opts.head,
+            root = opts.root,
+            binary = true,
+        }
+    end
+
     local old_lines = to_lines(opts.old_text)
     local new_lines = to_lines(opts.new_text)
 

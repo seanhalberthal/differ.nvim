@@ -10,6 +10,8 @@ local walk = require("differ.render.walk")
 
 local M = {}
 
+local BINARY_NOTICE = "Binary file not shown"
+
 -- render a model into a single "unified" column: interleaved buffer lines plus
 -- a populated line map and the fold ranges (buffer coords) the view collapses
 ---@param model differ.DiffModel
@@ -30,6 +32,15 @@ function M.render(model, opts)
             folds[#folds + 1] = { first = fold_start, last = #lines - 1 }
             fold_start = nil
         end
+    end
+
+    -- a binary file isn't diffed (it would blow up the word pass); show a placeholder
+    if model.binary then
+        map:push({ kind = "meta" })
+        return {
+            columns = { { lines = { BINARY_NOTICE }, map = map, side = "unified", folds = folds } },
+            rows = 1,
+        }
     end
 
     -- identical content produces no hunks; nothing to show

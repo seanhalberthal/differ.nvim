@@ -83,4 +83,11 @@ describe("render.stacked end-to-end content", function()
         assert.are.equal(11, #r.lines) -- nothing dropped (9 unchanged + X + Y)
         assert.are.same({ { first = 5, last = 7 } }, r.folds) -- the 4,5,6 middle folds
     end)
+
+    it("renders a placeholder for a binary file, never the raw bytes", function()
+        local model = build("a\0b", "c\0d")
+        local r = render(model, { context = math.huge })
+        assert.are.same({ "Binary file not shown" }, r.lines)
+        assert.are.equal("meta", r.map.lines[1].kind)
+    end)
 end)

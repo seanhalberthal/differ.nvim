@@ -69,4 +69,11 @@ describe("render.split end-to-end round-trip", function()
     it("multiple separated hunks", function()
         assert_roundtrip("1\n2\n3\n4\n5\n6\n7\n8\n9\n", "1\nX\n3\n4\n5\n6\n7\nY\n9\n")
     end)
+
+    it("renders an aligned placeholder for a binary file", function()
+        local r = render(build("a\0b", "c\0d"), { context = math.huge })
+        assert.are.same({ "Binary file not shown" }, r.old_lines)
+        assert.are.same({ "Binary file not shown" }, r.new_lines)
+        assert.are.equal(#r.old_lines, #r.new_lines) -- columns stay row-aligned
+    end)
 end)
