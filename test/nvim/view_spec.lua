@@ -399,29 +399,35 @@ describe("view re-source", function()
         v:close()
     end)
 
-    it("sets the file's filetype (for the statusline) but keeps native syntax off", function()
-        local function named(path)
-            return diff.build({
-                path = path,
-                old_rev = "A",
-                new_rev = "B",
-                old_text = "x\n",
-                new_text = "x\ny\n",
+    it(
+        "uses a private filetype, exposing the source filetype as a buffer var, with native syntax off",
+        function()
+            local function named(path)
+                return diff.build({
+                    path = path,
+                    old_rev = "A",
+                    new_rev = "B",
+                    old_text = "x\n",
+                    new_text = "x\ny\n",
+                })
+            end
+            local v = View.new(named("foo.lua"), {
+                layout = "stacked",
+                context = math.huge,
+                deep_diff = { enabled = true },
             })
+            v:open()
+            local buf = v.columns[1].bufnr
+            -- a private filetype so foreign `FileType <lang>` consumers (lsp, lint) don't attach
+            assert.are.equal("differdiff", vim.bo[buf].filetype)
+            assert.are.equal("lua", vim.b[buf].differ_filetype) -- source filetype for a lualine label
+            assert.are.equal("OFF", vim.bo[buf].syntax) -- differ paints its own syntax pass
+            v:set_source(named("bar.py")) -- the source-filetype var tracks the re-sourced file
+            assert.are.equal("differdiff", vim.bo[buf].filetype)
+            assert.are.equal("python", vim.b[buf].differ_filetype)
+            v:close()
         end
-        local v = View.new(named("foo.lua"), {
-            layout = "stacked",
-            context = math.huge,
-            deep_diff = { enabled = true },
-        })
-        v:open()
-        local buf = v.columns[1].bufnr
-        assert.are.equal("lua", vim.bo[buf].filetype)
-        assert.are.equal("OFF", vim.bo[buf].syntax) -- differ paints its own syntax pass
-        v:set_source(named("bar.py")) -- filetype tracks the re-sourced file
-        assert.are.equal("python", vim.bo[buf].filetype)
-        v:close()
-    end)
+    )
 
     it("holds the cursor near the prior hunk when re-sourced with a focus_line", function()
         -- two hunks: line 2 (b->B) and line 8 (h->H)
@@ -534,43 +540,50 @@ describe("view jump-to-file", function()
         v:close()
     end)
 
-    it("switches to an already-loaded, unsaved real-file buffer rather than :edit-reloading it", function()
-        vim.cmd("silent! only")
-        local dir = vim.fn.tempname()
-        write(dir, "f.txt", "a\nb\nc\n")
-        local function build()
-            return diff.build({
-                path = "f.txt",
-                old_rev = "HEAD",
-                new_rev = "WORKTREE",
-                old_text = "a\nb\nc\n",
-                new_text = "a\nb\nc\n",
-                root = dir,
-            })
+    it(
+        "switches to an already-loaded, unsaved real-file buffer rather than :edit-reloading it",
+        function()
+            vim.cmd("silent! only")
+            local dir = vim.fn.tempname()
+            write(dir, "f.txt", "a\nb\nc\n")
+            local function build()
+                return diff.build({
+                    path = "f.txt",
+                    old_rev = "HEAD",
+                    new_rev = "WORKTREE",
+                    old_text = "a\nb\nc\n",
+                    new_text = "a\nb\nc\n",
+                    root = dir,
+                })
+            end
+            local v1 = View.new(
+                build(),
+                { layout = "stacked", context = math.huge, deep_diff = { enabled = true } }
+            )
+            v1:open()
+            v1:jump_to_file() -- first jump: loads the real file fresh
+
+            -- edit the real buffer and leave it unsaved, as `de` -> type -> (no :w) would
+            local realbuf = vim.api.nvim_get_current_buf()
+            vim.api.nvim_buf_set_lines(realbuf, 1, 2, false, { "B" })
+            assert.is_true(vim.bo[realbuf].modified)
+
+            -- a second differ session over the same file, then jump_to_file again: must
+            -- not try to :edit (reload) the dirty buffer, which would raise E37
+            local v2 = View.new(
+                build(),
+                { layout = "stacked", context = math.huge, deep_diff = { enabled = true } }
+            )
+            v2:open()
+            assert.has_no.errors(function()
+                v2:jump_to_file()
+            end)
+
+            assert.are.equal(realbuf, vim.api.nvim_get_current_buf()) -- reused, not reloaded
+            assert.is_true(vim.bo[realbuf].modified) -- unsaved edit survived
+            assert.are.same({ "a", "B", "c" }, vim.api.nvim_buf_get_lines(realbuf, 0, -1, false))
         end
-        local v1 =
-            View.new(build(), { layout = "stacked", context = math.huge, deep_diff = { enabled = true } })
-        v1:open()
-        v1:jump_to_file() -- first jump: loads the real file fresh
-
-        -- edit the real buffer and leave it unsaved, as `de` -> type -> (no :w) would
-        local realbuf = vim.api.nvim_get_current_buf()
-        vim.api.nvim_buf_set_lines(realbuf, 1, 2, false, { "B" })
-        assert.is_true(vim.bo[realbuf].modified)
-
-        -- a second differ session over the same file, then jump_to_file again: must
-        -- not try to :edit (reload) the dirty buffer, which would raise E37
-        local v2 =
-            View.new(build(), { layout = "stacked", context = math.huge, deep_diff = { enabled = true } })
-        v2:open()
-        assert.has_no.errors(function()
-            v2:jump_to_file()
-        end)
-
-        assert.are.equal(realbuf, vim.api.nvim_get_current_buf()) -- reused, not reloaded
-        assert.is_true(vim.bo[realbuf].modified) -- unsaved edit survived
-        assert.are.same({ "a", "B", "c" }, vim.api.nvim_buf_get_lines(realbuf, 0, -1, false))
-    end)
+    )
 end)
 
 describe("view edit-in-review", function()

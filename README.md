@@ -258,23 +258,40 @@ differ ships no global launchers - only the in-view buffer maps above and the op
 
 ### which-key
 
-differ's surfaces are scratch buffers (`buftype=nofile`), and the diff buffers carry the source file's filetype so the statusline reads right. Some which-key setups gate their trigger (re)registration on `buftype == ""`, or rebuild triggers in a way that briefly clears them globally (each `wk.add` calls `Buf.clear()`). In those setups the `<leader>` / `]` / `[` popups can fail to open over a differ buffer, even though the same keys work in a normal file. It tends to surface most reliably on filetypes with heavy buffer churn on open (e.g. a C# diff under a Roslyn setup that creates and tears down buffers), since that churn lands on which-key's trigger suspension windows.
+differ's surfaces are scratch buffers (`buftype=nofile`) with their own filetypes (`differdiff` for the diff buffers, `differpanel`, `differhistory`), so no foreign `FileType <lang>` autocmds attach to them. Some which-key setups gate their trigger (re)registration on `buftype == ""`, or rebuild triggers in a way that briefly clears them globally (each `wk.add` calls `Buf.clear()`). In those setups the `<leader>` / `]` / `[` popups can fail to open over a scratch buffer during which-key's trigger suspension windows, even though the same keys work in a normal file.
 
-This is a property of the which-key integration, not of differ. If you hit it, pin permanent buffer-local maps on differ buffers (a plain keymap isn't managed by the trigger system, so it can't be cleared). Every differ buffer is named `differ://…`, so key off the name:
+This is a property of the which-key integration, not of differ. If you hit it, pin permanent buffer-local maps on differ buffers (a plain keymap isn't managed by the trigger system, so it can't be cleared). differ's buffers carry stable filetypes, so key off those:
 
 ```lua
-vim.api.nvim_create_autocmd("BufWinEnter", {
+vim.api.nvim_create_autocmd("FileType", {
   group = vim.api.nvim_create_augroup("differ-whichkey", { clear = true }),
+  pattern = { "differdiff", "differpanel", "differhistory" },
   callback = function(ev)
-    if not vim.api.nvim_buf_get_name(ev.buf):match("^differ://") then
-      return
-    end
     local wk = require("which-key")
     for _, key in ipairs({ " ", "]", "[" }) do
       vim.keymap.set("n", key, function() wk.show(key) end, { buffer = ev.buf })
     end
   end,
 })
+```
+
+### Statusline
+
+The diff buffers use a private `differdiff` filetype rather than the source file's, so foreign `FileType <lang>` autocmds (LSP, linters, semantic tokens) don't attach to a throwaway `differ://` buffer. The source filetype is stashed in `b:differ_filetype`, so a statusline can still show the language.
+
+For lualine, differ ships a drop-in for the stock `filetype` component, which shows the source filetype (with its devicon) on differ buffers and the native filetype everywhere else:
+
+```lua
+sections = { lualine_x = { require("differ.lualine").filetype } }
+```
+
+If you lazy-load differ on `cmd`, don't `require("differ.lualine")` from your statusline config: requiring any `differ.*` module makes lazy load the whole plugin at startup, defeating the lazy-load. Read the buffer var directly instead, which never triggers a load and works whether or not differ is loaded (the var is simply absent on every other buffer). This is the shape for any custom statusline, lualine or not:
+
+```lua
+local function diff_filetype()
+  local ft = vim.b.differ_filetype
+  return (type(ft) == "string" and ft ~= "") and ft or vim.bo.filetype
+end
 ```
 
 ### Lua API
