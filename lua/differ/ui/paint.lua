@@ -18,6 +18,17 @@ function M.apply(bufnr, ns, column)
     vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
     for i, line in ipairs(column.map.lines) do
         local row = i - 1
+        -- split's filler: a meta row with no text, padding the column opposite an
+        -- inserted/deleted block. fill it with dashes (columns wide, clipped to the
+        -- pane) so the empty side reads as "no line here", not a blank void. anchored
+        -- at window col 0; the binary-notice meta row carries text, so it's excluded
+        if line.kind == "meta" and (column.lines[i] == nil or column.lines[i] == "") then
+            vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
+                virt_text = { { string.rep("-", vim.o.columns), "differFiller" } },
+                virt_text_win_col = 0,
+                priority = 100,
+            })
+        end
         local line_hl = LINE_HL[line.kind]
         if line_hl then
             -- char-level full-line fill, not line_hl_group: a line_hl_group bg wins

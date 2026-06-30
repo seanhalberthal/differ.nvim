@@ -18,6 +18,10 @@ local LINKS = {
     -- foreground (`:h hl-CursorLine`), so it loses to the diff line backgrounds; we
     -- repaint it as a char-level extmark above them. links to CursorLine to track the theme
     differCursorLine = { link = "CursorLine" },
+    -- split's row-padding: a meta/filler row opposite an inserted or deleted block.
+    -- a dashed fill marks the side that has no line here, the native-vimdiff look, so
+    -- the gap reads as "absent on this side" rather than an empty void. dim like NonText
+    differFiller = { link = "NonText" },
     -- neutral fallback for a staged line with no add/delete kind; kinded staged lines
     -- use the dimmed deep-diff groups (differStagedLine{Add,Delete}/Word*) instead
     differStagedLine = { link = "CursorLine" },
