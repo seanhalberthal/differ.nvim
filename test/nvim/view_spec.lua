@@ -533,6 +533,44 @@ describe("view jump-to-file", function()
         assert.is_true(vim.api.nvim_buf_is_valid(buf)) -- still open: no file-backed source
         v:close()
     end)
+
+    it("switches to an already-loaded, unsaved real-file buffer rather than :edit-reloading it", function()
+        vim.cmd("silent! only")
+        local dir = vim.fn.tempname()
+        write(dir, "f.txt", "a\nb\nc\n")
+        local function build()
+            return diff.build({
+                path = "f.txt",
+                old_rev = "HEAD",
+                new_rev = "WORKTREE",
+                old_text = "a\nb\nc\n",
+                new_text = "a\nb\nc\n",
+                root = dir,
+            })
+        end
+        local v1 =
+            View.new(build(), { layout = "stacked", context = math.huge, deep_diff = { enabled = true } })
+        v1:open()
+        v1:jump_to_file() -- first jump: loads the real file fresh
+
+        -- edit the real buffer and leave it unsaved, as `de` -> type -> (no :w) would
+        local realbuf = vim.api.nvim_get_current_buf()
+        vim.api.nvim_buf_set_lines(realbuf, 1, 2, false, { "B" })
+        assert.is_true(vim.bo[realbuf].modified)
+
+        -- a second differ session over the same file, then jump_to_file again: must
+        -- not try to :edit (reload) the dirty buffer, which would raise E37
+        local v2 =
+            View.new(build(), { layout = "stacked", context = math.huge, deep_diff = { enabled = true } })
+        v2:open()
+        assert.has_no.errors(function()
+            v2:jump_to_file()
+        end)
+
+        assert.are.equal(realbuf, vim.api.nvim_get_current_buf()) -- reused, not reloaded
+        assert.is_true(vim.bo[realbuf].modified) -- unsaved edit survived
+        assert.are.same({ "a", "B", "c" }, vim.api.nvim_buf_get_lines(realbuf, 0, -1, false))
+    end)
 end)
 
 describe("view edit-in-review", function()

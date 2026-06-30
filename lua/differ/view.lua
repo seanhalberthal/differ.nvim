@@ -1057,7 +1057,15 @@ function View:jump_to_file()
     if return_tab and vim.api.nvim_tabpage_is_valid(return_tab) then
         vim.api.nvim_set_current_tabpage(return_tab)
     end
-    vim.cmd.edit(vim.fn.fnameescape(abs))
+    -- if abs is already loaded (e.g. edited but left unsaved after a prior
+    -- jump-to-file), switch to that buffer instead of :edit, which would force a
+    -- disk reload and refuse with E37 over the unsaved changes
+    local bufnr = vim.fn.bufnr(abs)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+        vim.api.nvim_win_set_buf(0, bufnr)
+    else
+        vim.cmd.edit(vim.fn.fnameescape(abs))
+    end
     if target then
         place_cursor(target, tcol)
     end
