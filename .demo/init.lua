@@ -96,7 +96,15 @@ do
       noautocmd = true,
       zindex = 300,
     }
-    if win and vim.api.nvim_win_is_valid(win) then
+    -- a float belongs to the tabpage it was opened on; a `:Differ`/`tabnew` switch
+    -- leaves it valid but invisible on the new tab, so `nvim_win_is_valid` alone
+    -- doesn't catch staleness here -- check the float is still on the current tab too,
+    -- else later keys (e.g. right after `do`) update a hidden window and never render
+    if win and (not vim.api.nvim_win_is_valid(win) or vim.api.nvim_win_get_tabpage(win) ~= vim.api.nvim_get_current_tabpage()) then
+      pcall(vim.api.nvim_win_close, win, true)
+      win = nil
+    end
+    if win then
       vim.api.nvim_win_set_config(win, cfg)
     else
       win = vim.api.nvim_open_win(buf, false, cfg)

@@ -106,7 +106,32 @@ Sleep 600ms
 Type "[f"
 Sleep 1s
 Type "de"
+Sleep 2s
+
+# ── A live edit, reflected straight away: theme.lua already carries one
+# unstaged hunk and nothing staged, so reopening the diff lands right on it --
+# the new line just joins the existing change, no staged/unstaged twin to dodge.
+Type ":e lua/theme.lua"
+Enter
+Sleep 1s
+Type ":10"
+Enter
+Type "o"
+Type `M.accent2 = "#ff79c6"`
+Escape
+Type ":w"
+Enter
+Sleep 2s
+Space
+Type "do"
+Sleep 2.6s
+Type "de"
 Sleep 1.2s
+
+# back to palette.lua for its commit history
+Type ":e lua/palette.lua"
+Enter
+Sleep 800ms
 Space
 Type "dh"
 Sleep 2.6s
