@@ -217,7 +217,7 @@ differ ships no global launchers - only the in-view buffer maps above and the op
   cmd = { "Differ", "D" }, -- "D" matches command_alias below; see note above
   keys = {
     -- local diff / history
-    { '<leader>do', '<cmd>Differ HEAD<CR>',                   desc = "Diff: open (vs index)" },
+    { '<leader>do', '<cmd>Differ<CR>',                        desc = "Diff: open (vs index)" },
     { "<leader>dc", "<cmd>Differ close<CR>",                  desc = "Diff: close" },
     { "<leader>dt", "<cmd>Differ base<CR>",                   desc = "Diff: branch total (vs base)" },
     { "<leader>de", "<cmd>Differ gofile<CR>",                 desc = "Diff: open the real file" },
